@@ -1,0 +1,78 @@
+<h1>ReactErrorUtils.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactErrorUtils
+ * @typechecks
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> caughtError = <span class="literal">null</span>;
+
+<span class="comment">/**
+ * Call a function while guarding against errors that happens within it.
+ *
+ * @param {?String} name of the guard to use for logging or debugging
+ * @param {Function} func The function to invoke
+ * @param {*} a First argument
+ * @param {*} b Second argument
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">invokeGuardedCallback</span><span class="params">(name, func, a, b)</span> {</span>
+  <span class="keyword">try</span> {
+    <span class="keyword">return</span> func(a, b);
+  } <span class="keyword">catch</span> (x) {
+    <span class="keyword">if</span> (caughtError === <span class="literal">null</span>) {
+      caughtError = x;
+    }
+    <span class="keyword">return</span> <span class="literal">undefined</span>;
+  }
+}
+
+<span class="keyword">var</span> ReactErrorUtils = {
+  invokeGuardedCallback: invokeGuardedCallback,
+
+  <span class="comment">/**
+   * Invoked by ReactTestUtils.Simulate so that any errors thrown by the event
+   * handler are sure to be rethrown by rethrowCaughtError.
+   */</span>
+  invokeGuardedCallbackWithCatch: invokeGuardedCallback,
+
+  <span class="comment">/**
+   * During execution of guarded functions we will capture the first error which
+   * we will rethrow to be handled by the top level error handler.
+   */</span>
+  rethrowCaughtError: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">if</span> (caughtError) {
+      <span class="keyword">var</span> error = caughtError;
+      caughtError = <span class="literal">null</span>;
+      <span class="keyword">throw</span> error;
+    }
+  }
+};
+
+<span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+  <span class="comment">/**
+   * To help development we can get better devtools integration by simulating a
+   * real browser event.
+   */</span>
+  <span class="keyword">if</span> (<span class="keyword">typeof</span> window !== <span class="string">'undefined'</span> &amp;&amp; <span class="keyword">typeof</span> window.dispatchEvent === <span class="string">'function'</span> &amp;&amp; <span class="keyword">typeof</span> document !== <span class="string">'undefined'</span> &amp;&amp; <span class="keyword">typeof</span> document.createEvent === <span class="string">'function'</span>) {
+    <span class="keyword">var</span> fakeNode = document.createElement(<span class="string">'react'</span>);
+    ReactErrorUtils.invokeGuardedCallback = <span class="function"><span class="keyword">function</span> <span class="params">(name, func, a, b)</span> {</span>
+      <span class="keyword">var</span> boundFunc = func.bind(<span class="literal">null</span>, a, b);
+      <span class="keyword">var</span> evtType = <span class="string">'react-'</span> + name;
+      fakeNode.addEventListener(evtType, boundFunc, <span class="literal">false</span>);
+      <span class="keyword">var</span> evt = document.createEvent(<span class="string">'Event'</span>);
+      evt.initEvent(evtType, <span class="literal">false</span>, <span class="literal">false</span>);
+      fakeNode.dispatchEvent(evt);
+      fakeNode.removeEventListener(evtType, boundFunc, <span class="literal">false</span>);
+    };
+  }
+}
+
+module.exports = ReactErrorUtils;</code></pre>

@@ -1,0 +1,28 @@
+<h1>ViewportMetrics.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ViewportMetrics
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ViewportMetrics = {
+
+  currentScrollLeft: <span class="number">0</span>,
+
+  currentScrollTop: <span class="number">0</span>,
+
+  refreshScrollValues: <span class="function"><span class="keyword">function</span> <span class="params">(scrollPosition)</span> {</span>
+    ViewportMetrics.currentScrollLeft = scrollPosition.x;
+    ViewportMetrics.currentScrollTop = scrollPosition.y;
+  }
+
+};
+
+module.exports = ViewportMetrics;</code></pre>

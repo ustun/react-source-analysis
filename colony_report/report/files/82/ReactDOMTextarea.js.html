@@ -1,0 +1,136 @@
+<h1>ReactDOMTextarea.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDOMTextarea
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> DOMPropertyOperations = require(<span class="string">'./DOMPropertyOperations'</span>);
+<span class="keyword">var</span> LinkedValueUtils = require(<span class="string">'./LinkedValueUtils'</span>);
+<span class="keyword">var</span> ReactDOMComponentTree = require(<span class="string">'./ReactDOMComponentTree'</span>);
+<span class="keyword">var</span> ReactUpdates = require(<span class="string">'./ReactUpdates'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="keyword">var</span> didWarnValueLink = <span class="literal">false</span>;
+<span class="keyword">var</span> didWarnValueNull = <span class="literal">false</span>;
+
+<span class="function"><span class="keyword">function</span> <span class="title">forceUpdateIfMounted</span><span class="params">()</span> {</span>
+  <span class="keyword">if</span> (<span class="keyword">this</span>._rootNodeID) {
+    <span class="comment">// DOM component is still mounted; update</span>
+    ReactDOMTextarea.updateWrapper(<span class="keyword">this</span>);
+  }
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">warnIfValueIsNull</span><span class="params">(props)</span> {</span>
+  <span class="keyword">if</span> (props != <span class="literal">null</span> &amp;&amp; props.value === <span class="literal">null</span> &amp;&amp; !didWarnValueNull) {
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'`value` prop on `textarea` should not be null. '</span> + <span class="string">'Consider using the empty string to clear the component or `undefined` '</span> + <span class="string">'for uncontrolled components.'</span>) : <span class="literal">undefined</span>;
+
+    didWarnValueNull = <span class="literal">true</span>;
+  }
+}
+
+<span class="comment">/**
+ * Implements a &lt;textarea> native component that allows setting `value`, and
+ * `defaultValue`. This differs from the traditional DOM API because value is
+ * usually set as PCDATA children.
+ *
+ * If `value` is not supplied (or null/undefined), user actions that affect the
+ * value will trigger updates to the element.
+ *
+ * If `value` is supplied (and not null/undefined), the rendered element will
+ * not trigger updates to the element. Instead, the `value` prop must change in
+ * order for the rendered element to be updated.
+ *
+ * The rendered element will be initialized with an empty value, the prop
+ * `defaultValue` if specified, or the children content (deprecated).
+ */</span>
+<span class="keyword">var</span> ReactDOMTextarea = {
+  getNativeProps: <span class="function"><span class="keyword">function</span> <span class="params">(inst, props)</span> {</span>
+    !(props.dangerouslySetInnerHTML == <span class="literal">null</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'`dangerouslySetInnerHTML` does not make sense on &lt;textarea>.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+    <span class="comment">// Always set children to the same thing. In IE9, the selection range will</span>
+    <span class="comment">// get reset if `textContent` is mutated.</span>
+    <span class="keyword">var</span> nativeProps = assign({}, props, {
+      defaultValue: <span class="literal">undefined</span>,
+      value: <span class="literal">undefined</span>,
+      children: inst._wrapperState.initialValue,
+      onChange: inst._wrapperState.onChange
+    });
+
+    <span class="keyword">return</span> nativeProps;
+  },
+
+  mountWrapper: <span class="function"><span class="keyword">function</span> <span class="params">(inst, props)</span> {</span>
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      LinkedValueUtils.checkPropTypes(<span class="string">'textarea'</span>, props, inst._currentElement._owner);
+      <span class="keyword">if</span> (props.valueLink !== <span class="literal">undefined</span> &amp;&amp; !didWarnValueLink) {
+        process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'`valueLink` prop on `textarea` is deprecated; set `value` and `onChange` instead.'</span>) : <span class="literal">undefined</span>;
+        didWarnValueLink = <span class="literal">true</span>;
+      }
+      warnIfValueIsNull(props);
+    }
+
+    <span class="keyword">var</span> defaultValue = props.defaultValue;
+    <span class="comment">// TODO (yungsters): Remove support for children content in &lt;textarea>.</span>
+    <span class="keyword">var</span> children = props.children;
+    <span class="keyword">if</span> (children != <span class="literal">null</span>) {
+      <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+        process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'Use the `defaultValue` or `value` props instead of setting '</span> + <span class="string">'children on &lt;textarea>.'</span>) : <span class="literal">undefined</span>;
+      }
+      !(defaultValue == <span class="literal">null</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'If you supply `defaultValue` on a &lt;textarea>, do not pass children.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+      <span class="keyword">if</span> (Array.isArray(children)) {
+        !(children.length &lt;= <span class="number">1</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'&lt;textarea> can only have at most one child.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+        children = children[<span class="number">0</span>];
+      }
+
+      defaultValue = <span class="string">''</span> + children;
+    }
+    <span class="keyword">if</span> (defaultValue == <span class="literal">null</span>) {
+      defaultValue = <span class="string">''</span>;
+    }
+    <span class="keyword">var</span> value = LinkedValueUtils.getValue(props);
+    inst._wrapperState = {
+      <span class="comment">// We save the initial value so that `ReactDOMComponent` doesn't update</span>
+      <span class="comment">// `textContent` (unnecessary since we update value).</span>
+      <span class="comment">// The initial value can be a boolean or object so that's why it's</span>
+      <span class="comment">// forced to be a string.</span>
+      initialValue: <span class="string">''</span> + (value != <span class="literal">null</span> ? value : defaultValue),
+      listeners: <span class="literal">null</span>,
+      onChange: _handleChange.bind(inst)
+    };
+  },
+
+  updateWrapper: <span class="function"><span class="keyword">function</span> <span class="params">(inst)</span> {</span>
+    <span class="keyword">var</span> props = inst._currentElement.props;
+
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      warnIfValueIsNull(props);
+    }
+
+    <span class="keyword">var</span> value = LinkedValueUtils.getValue(props);
+    <span class="keyword">if</span> (value != <span class="literal">null</span>) {
+      <span class="comment">// Cast `value` to a string to ensure the value is set correctly. While</span>
+      <span class="comment">// browsers typically do this as necessary, jsdom doesn't.</span>
+      DOMPropertyOperations.setValueForProperty(ReactDOMComponentTree.getNodeFromInstance(inst), <span class="string">'value'</span>, <span class="string">''</span> + value);
+    }
+  }
+};
+
+<span class="function"><span class="keyword">function</span> <span class="title">_handleChange</span><span class="params">(event)</span> {</span>
+  <span class="keyword">var</span> props = <span class="keyword">this</span>._currentElement.props;
+  <span class="keyword">var</span> returnValue = LinkedValueUtils.executeOnChange(props, event);
+  ReactUpdates.asap(forceUpdateIfMounted, <span class="keyword">this</span>);
+  <span class="keyword">return</span> returnValue;
+}
+
+module.exports = ReactDOMTextarea;</code></pre>

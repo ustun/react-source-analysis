@@ -1,0 +1,503 @@
+<h1>ResponderEventPlugin.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ResponderEventPlugin
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> EventConstants = require(<span class="string">'./EventConstants'</span>);
+<span class="keyword">var</span> EventPluginUtils = require(<span class="string">'./EventPluginUtils'</span>);
+<span class="keyword">var</span> EventPropagators = require(<span class="string">'./EventPropagators'</span>);
+<span class="keyword">var</span> ResponderSyntheticEvent = require(<span class="string">'./ResponderSyntheticEvent'</span>);
+<span class="keyword">var</span> ResponderTouchHistoryStore = require(<span class="string">'./ResponderTouchHistoryStore'</span>);
+
+<span class="keyword">var</span> accumulate = require(<span class="string">'./accumulate'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+<span class="keyword">var</span> keyOf = require(<span class="string">'fbjs/lib/keyOf'</span>);
+
+<span class="keyword">var</span> isStartish = EventPluginUtils.isStartish;
+<span class="keyword">var</span> isMoveish = EventPluginUtils.isMoveish;
+<span class="keyword">var</span> isEndish = EventPluginUtils.isEndish;
+<span class="keyword">var</span> executeDirectDispatch = EventPluginUtils.executeDirectDispatch;
+<span class="keyword">var</span> hasDispatches = EventPluginUtils.hasDispatches;
+<span class="keyword">var</span> executeDispatchesInOrderStopAtTrue = EventPluginUtils.executeDispatchesInOrderStopAtTrue;
+
+<span class="comment">/**
+ * Instance of element that should respond to touch/move types of interactions, as
+ * indicated explicitly by relevant callbacks.
+ */</span>
+<span class="keyword">var</span> responderInst = <span class="literal">null</span>;
+
+<span class="comment">/**
+ * Count of current touches. A textInput should become responder iff the
+ * the selection changes while there is a touch on the screen.
+ */</span>
+<span class="keyword">var</span> trackedTouchCount = <span class="number">0</span>;
+
+<span class="comment">/**
+ * Last reported number of active touches.
+ */</span>
+<span class="keyword">var</span> previousActiveTouches = <span class="number">0</span>;
+
+<span class="keyword">var</span> changeResponder = <span class="function"><span class="keyword">function</span> <span class="params">(nextResponderInst)</span> {</span>
+  <span class="keyword">var</span> oldResponderInst = responderInst;
+  responderInst = nextResponderInst;
+  <span class="keyword">if</span> (ResponderEventPlugin.GlobalResponderHandler !== <span class="literal">null</span>) {
+    ResponderEventPlugin.GlobalResponderHandler.onChange(oldResponderInst, nextResponderInst);
+  }
+};
+
+<span class="keyword">var</span> eventTypes = {
+  <span class="comment">/**
+   * On a `touchStart`/`mouseDown`, is it desired that this element become the
+   * responder?
+   */</span>
+  startShouldSetResponder: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onStartShouldSetResponder: <span class="literal">null</span> }),
+      captured: keyOf({ onStartShouldSetResponderCapture: <span class="literal">null</span> })
+    }
+  },
+
+  <span class="comment">/**
+   * On a `scroll`, is it desired that this element become the responder? This
+   * is usually not needed, but should be used to retroactively infer that a
+   * `touchStart` had occurred during momentum scroll. During a momentum scroll,
+   * a touch start will be immediately followed by a scroll event if the view is
+   * currently scrolling.
+   *
+   * TODO: This shouldn't bubble.
+   */</span>
+  scrollShouldSetResponder: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onScrollShouldSetResponder: <span class="literal">null</span> }),
+      captured: keyOf({ onScrollShouldSetResponderCapture: <span class="literal">null</span> })
+    }
+  },
+
+  <span class="comment">/**
+   * On text selection change, should this element become the responder? This
+   * is needed for text inputs or other views with native selection, so the
+   * JS view can claim the responder.
+   *
+   * TODO: This shouldn't bubble.
+   */</span>
+  selectionChangeShouldSetResponder: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onSelectionChangeShouldSetResponder: <span class="literal">null</span> }),
+      captured: keyOf({ onSelectionChangeShouldSetResponderCapture: <span class="literal">null</span> })
+    }
+  },
+
+  <span class="comment">/**
+   * On a `touchMove`/`mouseMove`, is it desired that this element become the
+   * responder?
+   */</span>
+  moveShouldSetResponder: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onMoveShouldSetResponder: <span class="literal">null</span> }),
+      captured: keyOf({ onMoveShouldSetResponderCapture: <span class="literal">null</span> })
+    }
+  },
+
+  <span class="comment">/**
+   * Direct responder events dispatched directly to responder. Do not bubble.
+   */</span>
+  responderStart: { registrationName: keyOf({ onResponderStart: <span class="literal">null</span> }) },
+  responderMove: { registrationName: keyOf({ onResponderMove: <span class="literal">null</span> }) },
+  responderEnd: { registrationName: keyOf({ onResponderEnd: <span class="literal">null</span> }) },
+  responderRelease: { registrationName: keyOf({ onResponderRelease: <span class="literal">null</span> }) },
+  responderTerminationRequest: {
+    registrationName: keyOf({ onResponderTerminationRequest: <span class="literal">null</span> })
+  },
+  responderGrant: { registrationName: keyOf({ onResponderGrant: <span class="literal">null</span> }) },
+  responderReject: { registrationName: keyOf({ onResponderReject: <span class="literal">null</span> }) },
+  responderTerminate: { registrationName: keyOf({ onResponderTerminate: <span class="literal">null</span> }) }
+};
+
+<span class="comment">/**
+ *
+ * Responder System:
+ * ----------------
+ *
+ * - A global, solitary "interaction lock" on a view.
+ * - If a node becomes the responder, it should convey visual feedback
+ *   immediately to indicate so, either by highlighting or moving accordingly.
+ * - To be the responder means, that touches are exclusively important to that
+ *   responder view, and no other view.
+ * - While touches are still occuring, the responder lock can be transfered to
+ *   a new view, but only to increasingly "higher" views (meaning ancestors of
+ *   the current responder).
+ *
+ * Responder being granted:
+ * ------------------------
+ *
+ * - Touch starts, moves, and scrolls can cause an ID to become the responder.
+ * - We capture/bubble `startShouldSetResponder`/`moveShouldSetResponder` to
+ *   the "appropriate place".
+ * - If nothing is currently the responder, the "appropriate place" is the
+ *   initiating event's `targetID`.
+ * - If something *is* already the responder, the "appropriate place" is the
+ *   first common ancestor of the event target and the current `responderInst`.
+ * - Some negotiation happens: See the timing diagram below.
+ * - Scrolled views automatically become responder. The reasoning is that a
+ *   platform scroll view that isn't built on top of the responder system has
+ *   began scrolling, and the active responder must now be notified that the
+ *   interaction is no longer locked to it - the system has taken over.
+ *
+ * - Responder being released:
+ *   As soon as no more touches that *started* inside of descendents of the
+ *   *current* responderInst, an `onResponderRelease` event is dispatched to the
+ *   current responder, and the responder lock is released.
+ *
+ * TODO:
+ * - on "end", a callback hook for `onResponderEndShouldRemainResponder` that
+ *   determines if the responder lock should remain.
+ * - If a view shouldn't "remain" the responder, any active touches should by
+ *   default be considered "dead" and do not influence future negotiations or
+ *   bubble paths. It should be as if those touches do not exist.
+ * -- For multitouch: Usually a translate-z will choose to "remain" responder
+ *  after one out of many touches ended. For translate-y, usually the view
+ *  doesn't wish to "remain" responder after one of many touches end.
+ * - Consider building this on top of a `stopPropagation` model similar to
+ *   `W3C` events.
+ * - Ensure that `onResponderTerminate` is called on touch cancels, whether or
+ *   not `onResponderTerminationRequest` returns `true` or `false`.
+ *
+ */</span>
+
+<span class="comment">/*                                             Negotiation Performed
+                                             +-----------------------+
+                                            /                         \
+Process low level events to    +     Current Responder      +   wantsResponderID
+determine who to perform negot-|   (if any exists at all)   |
+iation/transition              | Otherwise just pass through|
+-------------------------------+----------------------------+------------------+
+Bubble to find first ID        |                            |
+to return true:wantsResponderID|                            |
+                               |                            |
+     +-------------+           |                            |
+     | onTouchStart|           |                            |
+     +------+------+     none  |                            |
+            |            return|                            |
++-----------v-------------+true| +------------------------+ |
+|onStartShouldSetResponder|----->|onResponderStart (cur)  |&lt;-----------+
++-----------+-------------+    | +------------------------+ |          |
+            |                  |                            | +--------+-------+
+            | returned true for|       false:REJECT +-------->|onResponderReject
+            | wantsResponderID |                    |       | +----------------+
+            | (now attempt     | +------------------+-----+ |
+            |  handoff)        | |   onResponder          | |
+            +------------------->|      TerminationRequest| |
+                               | +------------------+-----+ |
+                               |                    |       | +----------------+
+                               |         true:GRANT +-------->|onResponderGrant|
+                               |                            | +--------+-------+
+                               | +------------------------+ |          |
+                               | |   onResponderTerminate |&lt;-----------+
+                               | +------------------+-----+ |
+                               |                    |       | +----------------+
+                               |                    +-------->|onResponderStart|
+                               |                            | +----------------+
+Bubble to find first ID        |                            |
+to return true:wantsResponderID|                            |
+                               |                            |
+     +-------------+           |                            |
+     | onTouchMove |           |                            |
+     +------+------+     none  |                            |
+            |            return|                            |
++-----------v-------------+true| +------------------------+ |
+|onMoveShouldSetResponder |----->|onResponderMove (cur)   |&lt;-----------+
++-----------+-------------+    | +------------------------+ |          |
+            |                  |                            | +--------+-------+
+            | returned true for|       false:REJECT +-------->|onResponderRejec|
+            | wantsResponderID |                    |       | +----------------+
+            | (now attempt     | +------------------+-----+ |
+            |  handoff)        | |   onResponder          | |
+            +------------------->|      TerminationRequest| |
+                               | +------------------+-----+ |
+                               |                    |       | +----------------+
+                               |         true:GRANT +-------->|onResponderGrant|
+                               |                            | +--------+-------+
+                               | +------------------------+ |          |
+                               | |   onResponderTerminate |&lt;-----------+
+                               | +------------------+-----+ |
+                               |                    |       | +----------------+
+                               |                    +-------->|onResponderMove |
+                               |                            | +----------------+
+                               |                            |
+                               |                            |
+      Some active touch started|                            |
+      inside current responder | +------------------------+ |
+      +------------------------->|      onResponderEnd    | |
+      |                        | +------------------------+ |
+  +---+---------+              |                            |
+  | onTouchEnd  |              |                            |
+  +---+---------+              |                            |
+      |                        | +------------------------+ |
+      +------------------------->|     onResponderEnd     | |
+      No active touches started| +-----------+------------+ |
+      inside current responder |             |              |
+                               |             v              |
+                               | +------------------------+ |
+                               | |    onResponderRelease  | |
+                               | +------------------------+ |
+                               |                            |
+                               +                            + */</span>
+
+<span class="comment">/**
+ * A note about event ordering in the `EventPluginHub`.
+ *
+ * Suppose plugins are injected in the following order:
+ *
+ * `[R, S, C]`
+ *
+ * To help illustrate the example, assume `S` is `SimpleEventPlugin` (for
+ * `onClick` etc) and `R` is `ResponderEventPlugin`.
+ *
+ * "Deferred-Dispatched Events":
+ *
+ * - The current event plugin system will traverse the list of injected plugins,
+ *   in order, and extract events by collecting the plugin's return value of
+ *   `extractEvents()`.
+ * - These events that are returned from `extractEvents` are "deferred
+ *   dispatched events".
+ * - When returned from `extractEvents`, deferred-dispatched events contain an
+ *   "accumulation" of deferred dispatches.
+ * - These deferred dispatches are accumulated/collected before they are
+ *   returned, but processed at a later time by the `EventPluginHub` (hence the
+ *   name deferred).
+ *
+ * In the process of returning their deferred-dispatched events, event plugins
+ * themselves can dispatch events on-demand without returning them from
+ * `extractEvents`. Plugins might want to do this, so that they can use event
+ * dispatching as a tool that helps them decide which events should be extracted
+ * in the first place.
+ *
+ * "On-Demand-Dispatched Events":
+ *
+ * - On-demand-dispatched events are not returned from `extractEvents`.
+ * - On-demand-dispatched events are dispatched during the process of returning
+ *   the deferred-dispatched events.
+ * - They should not have side effects.
+ * - They should be avoided, and/or eventually be replaced with another
+ *   abstraction that allows event plugins to perform multiple "rounds" of event
+ *   extraction.
+ *
+ * Therefore, the sequence of event dispatches becomes:
+ *
+ * - `R`s on-demand events (if any)   (dispatched by `R` on-demand)
+ * - `S`s on-demand events (if any)   (dispatched by `S` on-demand)
+ * - `C`s on-demand events (if any)   (dispatched by `C` on-demand)
+ * - `R`s extracted events (if any)   (dispatched by `EventPluginHub`)
+ * - `S`s extracted events (if any)   (dispatched by `EventPluginHub`)
+ * - `C`s extracted events (if any)   (dispatched by `EventPluginHub`)
+ *
+ * In the case of `ResponderEventPlugin`: If the `startShouldSetResponder`
+ * on-demand dispatch returns `true` (and some other details are satisfied) the
+ * `onResponderGrant` deferred dispatched event is returned from
+ * `extractEvents`. The sequence of dispatch executions in this case
+ * will appear as follows:
+ *
+ * - `startShouldSetResponder` (`ResponderEventPlugin` dispatches on-demand)
+ * - `touchStartCapture`       (`EventPluginHub` dispatches as usual)
+ * - `touchStart`              (`EventPluginHub` dispatches as usual)
+ * - `responderGrant/Reject`   (`EventPluginHub` dispatches as usual)
+ */</span>
+
+<span class="function"><span class="keyword">function</span> <span class="title">setResponderAndExtractTransfer</span><span class="params">(topLevelType, targetInst, nativeEvent, nativeEventTarget)</span> {</span>
+  <span class="keyword">var</span> shouldSetEventType = isStartish(topLevelType) ? eventTypes.startShouldSetResponder : isMoveish(topLevelType) ? eventTypes.moveShouldSetResponder : topLevelType === EventConstants.topLevelTypes.topSelectionChange ? eventTypes.selectionChangeShouldSetResponder : eventTypes.scrollShouldSetResponder;
+
+  <span class="comment">// TODO: stop one short of the the current responder.</span>
+  <span class="keyword">var</span> bubbleShouldSetFrom = !responderInst ? targetInst : EventPluginUtils.getLowestCommonAncestor(responderInst, targetInst);
+
+  <span class="comment">// When capturing/bubbling the "shouldSet" event, we want to skip the target</span>
+  <span class="comment">// (deepest ID) if it happens to be the current responder. The reasoning:</span>
+  <span class="comment">// It's strange to get an `onMoveShouldSetResponder` when you're *already*</span>
+  <span class="comment">// the responder.</span>
+  <span class="keyword">var</span> skipOverBubbleShouldSetFrom = bubbleShouldSetFrom === responderInst;
+  <span class="keyword">var</span> shouldSetEvent = ResponderSyntheticEvent.getPooled(shouldSetEventType, bubbleShouldSetFrom, nativeEvent, nativeEventTarget);
+  shouldSetEvent.touchHistory = ResponderTouchHistoryStore.touchHistory;
+  <span class="keyword">if</span> (skipOverBubbleShouldSetFrom) {
+    EventPropagators.accumulateTwoPhaseDispatchesSkipTarget(shouldSetEvent);
+  } <span class="keyword">else</span> {
+    EventPropagators.accumulateTwoPhaseDispatches(shouldSetEvent);
+  }
+  <span class="keyword">var</span> wantsResponderInst = executeDispatchesInOrderStopAtTrue(shouldSetEvent);
+  <span class="keyword">if</span> (!shouldSetEvent.isPersistent()) {
+    shouldSetEvent.constructor.release(shouldSetEvent);
+  }
+
+  <span class="keyword">if</span> (!wantsResponderInst || wantsResponderInst === responderInst) {
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+  <span class="keyword">var</span> extracted;
+  <span class="keyword">var</span> grantEvent = ResponderSyntheticEvent.getPooled(eventTypes.responderGrant, wantsResponderInst, nativeEvent, nativeEventTarget);
+  grantEvent.touchHistory = ResponderTouchHistoryStore.touchHistory;
+
+  EventPropagators.accumulateDirectDispatches(grantEvent);
+  <span class="keyword">if</span> (responderInst) {
+
+    <span class="keyword">var</span> terminationRequestEvent = ResponderSyntheticEvent.getPooled(eventTypes.responderTerminationRequest, responderInst, nativeEvent, nativeEventTarget);
+    terminationRequestEvent.touchHistory = ResponderTouchHistoryStore.touchHistory;
+    EventPropagators.accumulateDirectDispatches(terminationRequestEvent);
+    <span class="keyword">var</span> shouldSwitch = !hasDispatches(terminationRequestEvent) || executeDirectDispatch(terminationRequestEvent);
+    <span class="keyword">if</span> (!terminationRequestEvent.isPersistent()) {
+      terminationRequestEvent.constructor.release(terminationRequestEvent);
+    }
+
+    <span class="keyword">if</span> (shouldSwitch) {
+      <span class="keyword">var</span> terminateEvent = ResponderSyntheticEvent.getPooled(eventTypes.responderTerminate, responderInst, nativeEvent, nativeEventTarget);
+      terminateEvent.touchHistory = ResponderTouchHistoryStore.touchHistory;
+      EventPropagators.accumulateDirectDispatches(terminateEvent);
+      extracted = accumulate(extracted, [grantEvent, terminateEvent]);
+      changeResponder(wantsResponderInst);
+    } <span class="keyword">else</span> {
+      <span class="keyword">var</span> rejectEvent = ResponderSyntheticEvent.getPooled(eventTypes.responderReject, wantsResponderInst, nativeEvent, nativeEventTarget);
+      rejectEvent.touchHistory = ResponderTouchHistoryStore.touchHistory;
+      EventPropagators.accumulateDirectDispatches(rejectEvent);
+      extracted = accumulate(extracted, rejectEvent);
+    }
+  } <span class="keyword">else</span> {
+    extracted = accumulate(extracted, grantEvent);
+    changeResponder(wantsResponderInst);
+  }
+  <span class="keyword">return</span> extracted;
+}
+
+<span class="comment">/**
+ * A transfer is a negotiation between a currently set responder and the next
+ * element to claim responder status. Any start event could trigger a transfer
+ * of responderInst. Any move event could trigger a transfer.
+ *
+ * @param {string} topLevelType Record from `EventConstants`.
+ * @return {boolean} True if a transfer of responder could possibly occur.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">canTriggerTransfer</span><span class="params">(topLevelType, targetInst)</span> {</span>
+  <span class="keyword">return</span> !!targetInst &amp;&amp; (topLevelType === EventConstants.topLevelTypes.topScroll || trackedTouchCount > <span class="number">0</span> &amp;&amp; topLevelType === EventConstants.topLevelTypes.topSelectionChange || isStartish(topLevelType) || isMoveish(topLevelType));
+}
+
+<span class="comment">/**
+ * Returns whether or not this touch end event makes it such that there are no
+ * longer any touches that started inside of the current `responderInst`.
+ *
+ * @param {NativeEvent} nativeEvent Native touch end event.
+ * @return {boolean} Whether or not this touch end event ends the responder.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">noResponderTouches</span><span class="params">(nativeEvent)</span> {</span>
+  <span class="keyword">var</span> touches = nativeEvent.touches;
+  <span class="keyword">if</span> (!touches || touches.length === <span class="number">0</span>) {
+    <span class="keyword">return</span> <span class="literal">true</span>;
+  }
+  <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; touches.length; i++) {
+    <span class="keyword">var</span> activeTouch = touches[i];
+    <span class="keyword">var</span> target = activeTouch.target;
+    <span class="keyword">if</span> (target !== <span class="literal">null</span> &amp;&amp; target !== <span class="literal">undefined</span> &amp;&amp; target !== <span class="number">0</span>) {
+      <span class="comment">// Is the original touch location inside of the current responder?</span>
+      <span class="keyword">var</span> targetInst = EventPluginUtils.getInstanceFromNode(target);
+      <span class="keyword">if</span> (EventPluginUtils.isAncestor(responderInst, targetInst)) {
+        <span class="keyword">return</span> <span class="literal">false</span>;
+      }
+    }
+  }
+  <span class="keyword">return</span> <span class="literal">true</span>;
+}
+
+<span class="keyword">var</span> ResponderEventPlugin = {
+
+  <span class="comment">/* For unit testing only */</span>
+  _getResponderID: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> responderInst ? responderInst._rootNodeID : <span class="literal">null</span>;
+  },
+
+  eventTypes: eventTypes,
+
+  <span class="comment">/**
+   * We must be resilient to `targetInst` being `null` on `touchMove` or
+   * `touchEnd`. On certain platforms, this means that a native scroll has
+   * assumed control and the original touch targets are destroyed.
+   */</span>
+  extractEvents: <span class="function"><span class="keyword">function</span> <span class="params">(topLevelType, targetInst, nativeEvent, nativeEventTarget)</span> {</span>
+    <span class="keyword">if</span> (isStartish(topLevelType)) {
+      trackedTouchCount += <span class="number">1</span>;
+    } <span class="keyword">else</span> <span class="keyword">if</span> (isEndish(topLevelType)) {
+      trackedTouchCount -= <span class="number">1</span>;
+      !(trackedTouchCount >= <span class="number">0</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Ended a touch event which was not counted in trackedTouchCount.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    }
+
+    ResponderTouchHistoryStore.recordTouchTrack(topLevelType, nativeEvent, nativeEventTarget);
+
+    <span class="keyword">var</span> extracted = canTriggerTransfer(topLevelType, targetInst) ? setResponderAndExtractTransfer(topLevelType, targetInst, nativeEvent, nativeEventTarget) : <span class="literal">null</span>;
+    <span class="comment">// Responder may or may not have transfered on a new touch start/move.</span>
+    <span class="comment">// Regardless, whoever is the responder after any potential transfer, we</span>
+    <span class="comment">// direct all touch start/move/ends to them in the form of</span>
+    <span class="comment">// `onResponderMove/Start/End`. These will be called for *every* additional</span>
+    <span class="comment">// finger that move/start/end, dispatched directly to whoever is the</span>
+    <span class="comment">// current responder at that moment, until the responder is "released".</span>
+    <span class="comment">//</span>
+    <span class="comment">// These multiple individual change touch events are are always bookended</span>
+    <span class="comment">// by `onResponderGrant`, and one of</span>
+    <span class="comment">// (`onResponderRelease/onResponderTerminate`).</span>
+    <span class="keyword">var</span> isResponderTouchStart = responderInst &amp;&amp; isStartish(topLevelType);
+    <span class="keyword">var</span> isResponderTouchMove = responderInst &amp;&amp; isMoveish(topLevelType);
+    <span class="keyword">var</span> isResponderTouchEnd = responderInst &amp;&amp; isEndish(topLevelType);
+    <span class="keyword">var</span> incrementalTouch = isResponderTouchStart ? eventTypes.responderStart : isResponderTouchMove ? eventTypes.responderMove : isResponderTouchEnd ? eventTypes.responderEnd : <span class="literal">null</span>;
+
+    <span class="keyword">if</span> (incrementalTouch) {
+      <span class="keyword">var</span> gesture = ResponderSyntheticEvent.getPooled(incrementalTouch, responderInst, nativeEvent, nativeEventTarget);
+      gesture.touchHistory = ResponderTouchHistoryStore.touchHistory;
+      EventPropagators.accumulateDirectDispatches(gesture);
+      extracted = accumulate(extracted, gesture);
+    }
+
+    <span class="keyword">var</span> isResponderTerminate = responderInst &amp;&amp; topLevelType === EventConstants.topLevelTypes.topTouchCancel;
+    <span class="keyword">var</span> isResponderRelease = responderInst &amp;&amp; !isResponderTerminate &amp;&amp; isEndish(topLevelType) &amp;&amp; noResponderTouches(nativeEvent);
+    <span class="keyword">var</span> finalTouch = isResponderTerminate ? eventTypes.responderTerminate : isResponderRelease ? eventTypes.responderRelease : <span class="literal">null</span>;
+    <span class="keyword">if</span> (finalTouch) {
+      <span class="keyword">var</span> finalEvent = ResponderSyntheticEvent.getPooled(finalTouch, responderInst, nativeEvent, nativeEventTarget);
+      finalEvent.touchHistory = ResponderTouchHistoryStore.touchHistory;
+      EventPropagators.accumulateDirectDispatches(finalEvent);
+      extracted = accumulate(extracted, finalEvent);
+      changeResponder(<span class="literal">null</span>);
+    }
+
+    <span class="keyword">var</span> numberActiveTouches = ResponderTouchHistoryStore.touchHistory.numberActiveTouches;
+    <span class="keyword">if</span> (ResponderEventPlugin.GlobalInteractionHandler &amp;&amp; numberActiveTouches !== previousActiveTouches) {
+      ResponderEventPlugin.GlobalInteractionHandler.onChange(numberActiveTouches);
+    }
+    previousActiveTouches = numberActiveTouches;
+
+    <span class="keyword">return</span> extracted;
+  },
+
+  GlobalResponderHandler: <span class="literal">null</span>,
+  GlobalInteractionHandler: <span class="literal">null</span>,
+
+  injection: {
+    <span class="comment">/**
+     * @param {{onChange: (ReactID, ReactID) => void} GlobalResponderHandler
+     * Object that handles any change in responder. Use this to inject
+     * integration with an existing touch handling system etc.
+     */</span>
+    injectGlobalResponderHandler: <span class="function"><span class="keyword">function</span> <span class="params">(GlobalResponderHandler)</span> {</span>
+      ResponderEventPlugin.GlobalResponderHandler = GlobalResponderHandler;
+    },
+
+    <span class="comment">/**
+     * @param {{onChange: (numberActiveTouches) => void} GlobalInteractionHandler
+     * Object that handles any change in the number of active touches.
+     */</span>
+    injectGlobalInteractionHandler: <span class="function"><span class="keyword">function</span> <span class="params">(GlobalInteractionHandler)</span> {</span>
+      ResponderEventPlugin.GlobalInteractionHandler = GlobalInteractionHandler;
+    }
+  }
+};
+
+module.exports = ResponderEventPlugin;</code></pre>

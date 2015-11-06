@@ -1,0 +1,197 @@
+<h1>SelectEventPlugin.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule SelectEventPlugin
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> EventConstants = require(<span class="string">'./EventConstants'</span>);
+<span class="keyword">var</span> EventPropagators = require(<span class="string">'./EventPropagators'</span>);
+<span class="keyword">var</span> ExecutionEnvironment = require(<span class="string">'fbjs/lib/ExecutionEnvironment'</span>);
+<span class="keyword">var</span> ReactDOMComponentTree = require(<span class="string">'./ReactDOMComponentTree'</span>);
+<span class="keyword">var</span> ReactInputSelection = require(<span class="string">'./ReactInputSelection'</span>);
+<span class="keyword">var</span> SyntheticEvent = require(<span class="string">'./SyntheticEvent'</span>);
+
+<span class="keyword">var</span> getActiveElement = require(<span class="string">'fbjs/lib/getActiveElement'</span>);
+<span class="keyword">var</span> isTextInputElement = require(<span class="string">'./isTextInputElement'</span>);
+<span class="keyword">var</span> keyOf = require(<span class="string">'fbjs/lib/keyOf'</span>);
+<span class="keyword">var</span> shallowEqual = require(<span class="string">'fbjs/lib/shallowEqual'</span>);
+
+<span class="keyword">var</span> topLevelTypes = EventConstants.topLevelTypes;
+
+<span class="keyword">var</span> skipSelectionChangeEvent = ExecutionEnvironment.canUseDOM &amp;&amp; <span class="string">'documentMode'</span> <span class="keyword">in</span> document &amp;&amp; document.documentMode &lt;= <span class="number">11</span>;
+
+<span class="keyword">var</span> eventTypes = {
+  select: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onSelect: <span class="literal">null</span> }),
+      captured: keyOf({ onSelectCapture: <span class="literal">null</span> })
+    },
+    dependencies: [topLevelTypes.topBlur, topLevelTypes.topContextMenu, topLevelTypes.topFocus, topLevelTypes.topKeyDown, topLevelTypes.topMouseDown, topLevelTypes.topMouseUp, topLevelTypes.topSelectionChange]
+  }
+};
+
+<span class="keyword">var</span> activeElement = <span class="literal">null</span>;
+<span class="keyword">var</span> activeElementInst = <span class="literal">null</span>;
+<span class="keyword">var</span> lastSelection = <span class="literal">null</span>;
+<span class="keyword">var</span> mouseDown = <span class="literal">false</span>;
+
+<span class="comment">// Track whether a listener exists for this plugin. If none exist, we do</span>
+<span class="comment">// not extract events. See #3639.</span>
+<span class="keyword">var</span> hasListener = <span class="literal">false</span>;
+<span class="keyword">var</span> ON_SELECT_KEY = keyOf({ onSelect: <span class="literal">null</span> });
+
+<span class="comment">/**
+ * Get an object which is a unique representation of the current selection.
+ *
+ * The return value will not be consistent across nodes or browsers, but
+ * two identical selections on the same node will return identical objects.
+ *
+ * @param {DOMElement} node
+ * @return {object}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getSelection</span><span class="params">(node)</span> {</span>
+  <span class="keyword">if</span> (<span class="string">'selectionStart'</span> <span class="keyword">in</span> node &amp;&amp; ReactInputSelection.hasSelectionCapabilities(node)) {
+    <span class="keyword">return</span> {
+      start: node.selectionStart,
+      end: node.selectionEnd
+    };
+  } <span class="keyword">else</span> <span class="keyword">if</span> (window.getSelection) {
+    <span class="keyword">var</span> selection = window.getSelection();
+    <span class="keyword">return</span> {
+      anchorNode: selection.anchorNode,
+      anchorOffset: selection.anchorOffset,
+      focusNode: selection.focusNode,
+      focusOffset: selection.focusOffset
+    };
+  } <span class="keyword">else</span> <span class="keyword">if</span> (document.selection) {
+    <span class="keyword">var</span> range = document.selection.createRange();
+    <span class="keyword">return</span> {
+      parentElement: range.parentElement(),
+      text: range.text,
+      top: range.boundingTop,
+      left: range.boundingLeft
+    };
+  }
+}
+
+<span class="comment">/**
+ * Poll selection to see whether it's changed.
+ *
+ * @param {object} nativeEvent
+ * @return {?SyntheticEvent}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">constructSelectEvent</span><span class="params">(nativeEvent, nativeEventTarget)</span> {</span>
+  <span class="comment">// Ensure we have the right element, and that the user is not dragging a</span>
+  <span class="comment">// selection (this matches native `select` event behavior). In HTML5, select</span>
+  <span class="comment">// fires only on input and textarea thus if there's no focused element we</span>
+  <span class="comment">// won't dispatch.</span>
+  <span class="keyword">if</span> (mouseDown || activeElement == <span class="literal">null</span> || activeElement !== getActiveElement()) {
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+
+  <span class="comment">// Only fire when selection has actually changed.</span>
+  <span class="keyword">var</span> currentSelection = getSelection(activeElement);
+  <span class="keyword">if</span> (!lastSelection || !shallowEqual(lastSelection, currentSelection)) {
+    lastSelection = currentSelection;
+
+    <span class="keyword">var</span> syntheticEvent = SyntheticEvent.getPooled(eventTypes.select, activeElementInst, nativeEvent, nativeEventTarget);
+
+    syntheticEvent.type = <span class="string">'select'</span>;
+    syntheticEvent.target = activeElement;
+
+    EventPropagators.accumulateTwoPhaseDispatches(syntheticEvent);
+
+    <span class="keyword">return</span> syntheticEvent;
+  }
+
+  <span class="keyword">return</span> <span class="literal">null</span>;
+}
+
+<span class="comment">/**
+ * This plugin creates an `onSelect` event that normalizes select events
+ * across form elements.
+ *
+ * Supported elements are:
+ * - input (see `isTextInputElement`)
+ * - textarea
+ * - contentEditable
+ *
+ * This differs from native browser implementations in the following ways:
+ * - Fires on contentEditable fields as well as inputs.
+ * - Fires for collapsed selection.
+ * - Fires after user input.
+ */</span>
+<span class="keyword">var</span> SelectEventPlugin = {
+
+  eventTypes: eventTypes,
+
+  extractEvents: <span class="function"><span class="keyword">function</span> <span class="params">(topLevelType, targetInst, nativeEvent, nativeEventTarget)</span> {</span>
+    <span class="keyword">if</span> (!hasListener) {
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    }
+
+    <span class="keyword">var</span> targetNode = targetInst ? ReactDOMComponentTree.getNodeFromInstance(targetInst) : window;
+
+    <span class="keyword">switch</span> (topLevelType) {
+      <span class="comment">// Track the input node that has focus.</span>
+      <span class="keyword">case</span> topLevelTypes.topFocus:
+        <span class="keyword">if</span> (isTextInputElement(targetNode) || targetNode.contentEditable === <span class="string">'true'</span>) {
+          activeElement = targetNode;
+          activeElementInst = targetInst;
+          lastSelection = <span class="literal">null</span>;
+        }
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> topLevelTypes.topBlur:
+        activeElement = <span class="literal">null</span>;
+        activeElementInst = <span class="literal">null</span>;
+        lastSelection = <span class="literal">null</span>;
+        <span class="keyword">break</span>;
+
+      <span class="comment">// Don't fire the event while the user is dragging. This matches the</span>
+      <span class="comment">// semantics of the native select event.</span>
+      <span class="keyword">case</span> topLevelTypes.topMouseDown:
+        mouseDown = <span class="literal">true</span>;
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> topLevelTypes.topContextMenu:
+      <span class="keyword">case</span> topLevelTypes.topMouseUp:
+        mouseDown = <span class="literal">false</span>;
+        <span class="keyword">return</span> constructSelectEvent(nativeEvent, nativeEventTarget);
+
+      <span class="comment">// Chrome and IE fire non-standard event when selection is changed (and</span>
+      <span class="comment">// sometimes when it hasn't). IE's event fires out of order with respect</span>
+      <span class="comment">// to key and input events on deletion, so we discard it.</span>
+      <span class="comment">//</span>
+      <span class="comment">// Firefox doesn't support selectionchange, so check selection status</span>
+      <span class="comment">// after each key entry. The selection changes after keydown and before</span>
+      <span class="comment">// keyup, but we check on keydown as well in the case of holding down a</span>
+      <span class="comment">// key, when multiple keydown events are fired but only one keyup is.</span>
+      <span class="comment">// This is also our approach for IE handling, for the reason above.</span>
+      <span class="keyword">case</span> topLevelTypes.topSelectionChange:
+        <span class="keyword">if</span> (skipSelectionChangeEvent) {
+          <span class="keyword">break</span>;
+        }
+      <span class="comment">// falls through</span>
+      <span class="keyword">case</span> topLevelTypes.topKeyDown:
+      <span class="keyword">case</span> topLevelTypes.topKeyUp:
+        <span class="keyword">return</span> constructSelectEvent(nativeEvent, nativeEventTarget);
+    }
+
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  },
+
+  didPutListener: <span class="function"><span class="keyword">function</span> <span class="params">(inst, registrationName, listener)</span> {</span>
+    <span class="keyword">if</span> (registrationName === ON_SELECT_KEY) {
+      hasListener = <span class="literal">true</span>;
+    }
+  }
+};
+
+module.exports = SelectEventPlugin;</code></pre>

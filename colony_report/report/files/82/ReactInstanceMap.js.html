@@ -1,0 +1,50 @@
+<h1>ReactInstanceMap.js</h1>
+<pre><code class="lang-js"><span class="comment">// OK</span>
+<span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactInstanceMap
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="comment">/**
+ * `ReactInstanceMap` maintains a mapping from a public facing stateful
+ * instance (key) and the internal representation (value). This allows public
+ * methods to accept the user facing instance as an argument and map them back
+ * to internal methods.
+ */</span>
+
+<span class="comment">// TODO: Replace this with ES6: var ReactInstanceMap = new Map();</span>
+<span class="keyword">var</span> ReactInstanceMap = {
+
+  <span class="comment">/**
+   * This API should be called `delete` but we'd have to make sure to always
+   * transform these to strings for IE support. When this transform is fully
+   * supported we can rename it.
+   */</span>
+  remove: <span class="function"><span class="keyword">function</span> <span class="params">(key)</span> {</span>
+    key._reactInternalInstance = <span class="literal">undefined</span>;
+  },
+
+  get: <span class="function"><span class="keyword">function</span> <span class="params">(key)</span> {</span>
+    <span class="keyword">return</span> key._reactInternalInstance;
+  },
+
+  has: <span class="function"><span class="keyword">function</span> <span class="params">(key)</span> {</span>
+    <span class="keyword">return</span> key._reactInternalInstance !== <span class="literal">undefined</span>;
+  },
+
+  set: <span class="function"><span class="keyword">function</span> <span class="params">(key, value)</span> {</span>
+    key._reactInternalInstance = value;
+  }
+
+};
+
+module.exports = ReactInstanceMap;
+</code></pre>

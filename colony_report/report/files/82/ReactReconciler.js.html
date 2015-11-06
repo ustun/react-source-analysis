@@ -1,0 +1,117 @@
+<h1>ReactReconciler.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactReconciler
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactRef = require(<span class="string">'./ReactRef'</span>);
+
+<span class="comment">/**
+ * Helper to call ReactRef.attachRefs with this composite component, split out
+ * to avoid allocations in the transaction mount-ready queue.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">attachRefs</span><span class="params">()</span> {</span>
+  ReactRef.attachRefs(<span class="keyword">this</span>, <span class="keyword">this</span>._currentElement);
+}
+
+<span class="keyword">var</span> ReactReconciler = {
+
+  <span class="comment">/**
+   * Initializes the component, renders markup, and registers event listeners.
+   *
+   * @param {ReactComponent} internalInstance
+   * @param {ReactReconcileTransaction|ReactServerRenderingTransaction} transaction
+   * @param {?object} the containing native component instance
+   * @param {?object} info about the native container
+   * @return {?string} Rendered markup to be inserted into the DOM.
+   * @final
+   * @internal
+   */</span>
+  mountComponent: <span class="function"><span class="keyword">function</span> <span class="params">(internalInstance, transaction, nativeParent, nativeContainerInfo, context)</span> {</span>
+    <span class="keyword">var</span> markup = internalInstance.mountComponent(transaction, nativeParent, nativeContainerInfo, context);
+    <span class="keyword">if</span> (internalInstance._currentElement &amp;&amp; internalInstance._currentElement.ref != <span class="literal">null</span>) {
+      transaction.getReactMountReady().enqueue(attachRefs, internalInstance);
+    }
+    <span class="keyword">return</span> markup;
+  },
+
+  <span class="comment">/**
+   * Returns a value that can be passed to
+   * ReactComponentEnvironment.replaceNodeWithMarkup.
+   */</span>
+  getNativeNode: <span class="function"><span class="keyword">function</span> <span class="params">(internalInstance)</span> {</span>
+    <span class="keyword">return</span> internalInstance.getNativeNode();
+  },
+
+  <span class="comment">/**
+   * Releases any resources allocated by `mountComponent`.
+   *
+   * @final
+   * @internal
+   */</span>
+  unmountComponent: <span class="function"><span class="keyword">function</span> <span class="params">(internalInstance)</span> {</span>
+    ReactRef.detachRefs(internalInstance, internalInstance._currentElement);
+    <span class="keyword">return</span> internalInstance.unmountComponent();
+  },
+
+  <span class="comment">/**
+   * Update a component using a new element.
+   *
+   * @param {ReactComponent} internalInstance
+   * @param {ReactElement} nextElement
+   * @param {ReactReconcileTransaction} transaction
+   * @param {object} context
+   * @internal
+   */</span>
+  receiveComponent: <span class="function"><span class="keyword">function</span> <span class="params">(internalInstance, nextElement, transaction, context)</span> {</span>
+    <span class="keyword">var</span> prevElement = internalInstance._currentElement;
+
+    <span class="keyword">if</span> (nextElement === prevElement &amp;&amp; context === internalInstance._context) {
+      <span class="comment">// Since elements are immutable after the owner is rendered,</span>
+      <span class="comment">// we can do a cheap identity compare here to determine if this is a</span>
+      <span class="comment">// superfluous reconcile. It's possible for state to be mutable but such</span>
+      <span class="comment">// change should trigger an update of the owner which would recreate</span>
+      <span class="comment">// the element. We explicitly check for the existence of an owner since</span>
+      <span class="comment">// it's possible for an element created outside a composite to be</span>
+      <span class="comment">// deeply mutated and reused.</span>
+
+      <span class="comment">// TODO: Bailing out early is just a perf optimization right?</span>
+      <span class="comment">// TODO: Removing the return statement should affect correctness?</span>
+      <span class="keyword">return</span>;
+    }
+
+    <span class="keyword">var</span> refsChanged = ReactRef.shouldUpdateRefs(prevElement, nextElement);
+
+    <span class="keyword">if</span> (refsChanged) {
+      ReactRef.detachRefs(internalInstance, prevElement);
+    }
+
+    internalInstance.receiveComponent(nextElement, transaction, context);
+
+    <span class="keyword">if</span> (refsChanged &amp;&amp; internalInstance._currentElement &amp;&amp; internalInstance._currentElement.ref != <span class="literal">null</span>) {
+      transaction.getReactMountReady().enqueue(attachRefs, internalInstance);
+    }
+  },
+
+  <span class="comment">/**
+   * Flush any dirty changes in a component.
+   *
+   * @param {ReactComponent} internalInstance
+   * @param {ReactReconcileTransaction} transaction
+   * @internal
+   */</span>
+  performUpdateIfNecessary: <span class="function"><span class="keyword">function</span> <span class="params">(internalInstance, transaction)</span> {</span>
+    internalInstance.performUpdateIfNecessary(transaction);
+  }
+
+};
+
+module.exports = ReactReconciler;</code></pre>

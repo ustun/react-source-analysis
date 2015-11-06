@@ -1,0 +1,206 @@
+<h1>ReactTransitionGroup.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactTransitionGroup
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> React = require(<span class="string">'./React'</span>);
+<span class="keyword">var</span> ReactTransitionChildMapping = require(<span class="string">'./ReactTransitionChildMapping'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> emptyFunction = require(<span class="string">'fbjs/lib/emptyFunction'</span>);
+
+<span class="keyword">var</span> ReactTransitionGroup = React.createClass({
+  displayName: <span class="string">'ReactTransitionGroup'</span>,
+
+  propTypes: {
+    component: React.PropTypes.any,
+    childFactory: React.PropTypes.func
+  },
+
+  getDefaultProps: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> {
+      component: <span class="string">'span'</span>,
+      childFactory: emptyFunction.thatReturnsArgument
+    };
+  },
+
+  getInitialState: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> {
+      children: ReactTransitionChildMapping.getChildMapping(<span class="keyword">this</span>.props.children)
+    };
+  },
+
+  componentWillMount: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">this</span>.currentlyTransitioningKeys = {};
+    <span class="keyword">this</span>.keysToEnter = [];
+    <span class="keyword">this</span>.keysToLeave = [];
+  },
+
+  componentDidMount: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">var</span> initialChildMapping = <span class="keyword">this</span>.state.children;
+    <span class="keyword">for</span> (<span class="keyword">var</span> key <span class="keyword">in</span> initialChildMapping) {
+      <span class="keyword">if</span> (initialChildMapping[key]) {
+        <span class="keyword">this</span>.performAppear(key);
+      }
+    }
+  },
+
+  componentWillReceiveProps: <span class="function"><span class="keyword">function</span> <span class="params">(nextProps)</span> {</span>
+    <span class="keyword">var</span> nextChildMapping = ReactTransitionChildMapping.getChildMapping(nextProps.children);
+    <span class="keyword">var</span> prevChildMapping = <span class="keyword">this</span>.state.children;
+
+    <span class="keyword">this</span>.setState({
+      children: ReactTransitionChildMapping.mergeChildMappings(prevChildMapping, nextChildMapping)
+    });
+
+    <span class="keyword">var</span> key;
+
+    <span class="keyword">for</span> (key <span class="keyword">in</span> nextChildMapping) {
+      <span class="keyword">var</span> hasPrev = prevChildMapping &amp;&amp; prevChildMapping.hasOwnProperty(key);
+      <span class="keyword">if</span> (nextChildMapping[key] &amp;&amp; !hasPrev &amp;&amp; !<span class="keyword">this</span>.currentlyTransitioningKeys[key]) {
+        <span class="keyword">this</span>.keysToEnter.push(key);
+      }
+    }
+
+    <span class="keyword">for</span> (key <span class="keyword">in</span> prevChildMapping) {
+      <span class="keyword">var</span> hasNext = nextChildMapping &amp;&amp; nextChildMapping.hasOwnProperty(key);
+      <span class="keyword">if</span> (prevChildMapping[key] &amp;&amp; !hasNext &amp;&amp; !<span class="keyword">this</span>.currentlyTransitioningKeys[key]) {
+        <span class="keyword">this</span>.keysToLeave.push(key);
+      }
+    }
+
+    <span class="comment">// If we want to someday check for reordering, we could do it here.</span>
+  },
+
+  componentDidUpdate: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">var</span> keysToEnter = <span class="keyword">this</span>.keysToEnter;
+    <span class="keyword">this</span>.keysToEnter = [];
+    keysToEnter.forEach(<span class="keyword">this</span>.performEnter);
+
+    <span class="keyword">var</span> keysToLeave = <span class="keyword">this</span>.keysToLeave;
+    <span class="keyword">this</span>.keysToLeave = [];
+    keysToLeave.forEach(<span class="keyword">this</span>.performLeave);
+  },
+
+  performAppear: <span class="function"><span class="keyword">function</span> <span class="params">(key)</span> {</span>
+    <span class="keyword">this</span>.currentlyTransitioningKeys[key] = <span class="literal">true</span>;
+
+    <span class="keyword">var</span> component = <span class="keyword">this</span>.refs[key];
+
+    <span class="keyword">if</span> (component.componentWillAppear) {
+      component.componentWillAppear(<span class="keyword">this</span>._handleDoneAppearing.bind(<span class="keyword">this</span>, key));
+    } <span class="keyword">else</span> {
+      <span class="keyword">this</span>._handleDoneAppearing(key);
+    }
+  },
+
+  _handleDoneAppearing: <span class="function"><span class="keyword">function</span> <span class="params">(key)</span> {</span>
+    <span class="keyword">var</span> component = <span class="keyword">this</span>.refs[key];
+    <span class="keyword">if</span> (component.componentDidAppear) {
+      component.componentDidAppear();
+    }
+
+    <span class="keyword">delete</span> <span class="keyword">this</span>.currentlyTransitioningKeys[key];
+
+    <span class="keyword">var</span> currentChildMapping = ReactTransitionChildMapping.getChildMapping(<span class="keyword">this</span>.props.children);
+
+    <span class="keyword">if</span> (!currentChildMapping || !currentChildMapping.hasOwnProperty(key)) {
+      <span class="comment">// This was removed before it had fully appeared. Remove it.</span>
+      <span class="keyword">this</span>.performLeave(key);
+    }
+  },
+
+  performEnter: <span class="function"><span class="keyword">function</span> <span class="params">(key)</span> {</span>
+    <span class="keyword">this</span>.currentlyTransitioningKeys[key] = <span class="literal">true</span>;
+
+    <span class="keyword">var</span> component = <span class="keyword">this</span>.refs[key];
+
+    <span class="keyword">if</span> (component.componentWillEnter) {
+      component.componentWillEnter(<span class="keyword">this</span>._handleDoneEntering.bind(<span class="keyword">this</span>, key));
+    } <span class="keyword">else</span> {
+      <span class="keyword">this</span>._handleDoneEntering(key);
+    }
+  },
+
+  _handleDoneEntering: <span class="function"><span class="keyword">function</span> <span class="params">(key)</span> {</span>
+    <span class="keyword">var</span> component = <span class="keyword">this</span>.refs[key];
+    <span class="keyword">if</span> (component.componentDidEnter) {
+      component.componentDidEnter();
+    }
+
+    <span class="keyword">delete</span> <span class="keyword">this</span>.currentlyTransitioningKeys[key];
+
+    <span class="keyword">var</span> currentChildMapping = ReactTransitionChildMapping.getChildMapping(<span class="keyword">this</span>.props.children);
+
+    <span class="keyword">if</span> (!currentChildMapping || !currentChildMapping.hasOwnProperty(key)) {
+      <span class="comment">// This was removed before it had fully entered. Remove it.</span>
+      <span class="keyword">this</span>.performLeave(key);
+    }
+  },
+
+  performLeave: <span class="function"><span class="keyword">function</span> <span class="params">(key)</span> {</span>
+    <span class="keyword">this</span>.currentlyTransitioningKeys[key] = <span class="literal">true</span>;
+
+    <span class="keyword">var</span> component = <span class="keyword">this</span>.refs[key];
+    <span class="keyword">if</span> (component.componentWillLeave) {
+      component.componentWillLeave(<span class="keyword">this</span>._handleDoneLeaving.bind(<span class="keyword">this</span>, key));
+    } <span class="keyword">else</span> {
+      <span class="comment">// Note that this is somewhat dangerous b/c it calls setState()</span>
+      <span class="comment">// again, effectively mutating the component before all the work</span>
+      <span class="comment">// is done.</span>
+      <span class="keyword">this</span>._handleDoneLeaving(key);
+    }
+  },
+
+  _handleDoneLeaving: <span class="function"><span class="keyword">function</span> <span class="params">(key)</span> {</span>
+    <span class="keyword">var</span> component = <span class="keyword">this</span>.refs[key];
+
+    <span class="keyword">if</span> (component.componentDidLeave) {
+      component.componentDidLeave();
+    }
+
+    <span class="keyword">delete</span> <span class="keyword">this</span>.currentlyTransitioningKeys[key];
+
+    <span class="keyword">var</span> currentChildMapping = ReactTransitionChildMapping.getChildMapping(<span class="keyword">this</span>.props.children);
+
+    <span class="keyword">if</span> (currentChildMapping &amp;&amp; currentChildMapping.hasOwnProperty(key)) {
+      <span class="comment">// This entered again before it fully left. Add it again.</span>
+      <span class="keyword">this</span>.performEnter(key);
+    } <span class="keyword">else</span> {
+      <span class="keyword">this</span>.setState(<span class="function"><span class="keyword">function</span> <span class="params">(state)</span> {</span>
+        <span class="keyword">var</span> newChildren = assign({}, state.children);
+        <span class="keyword">delete</span> newChildren[key];
+        <span class="keyword">return</span> { children: newChildren };
+      });
+    }
+  },
+
+  render: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="comment">// TODO: we could get rid of the need for the wrapper node</span>
+    <span class="comment">// by cloning a single child</span>
+    <span class="keyword">var</span> childrenToRender = [];
+    <span class="keyword">for</span> (<span class="keyword">var</span> key <span class="keyword">in</span> <span class="keyword">this</span>.state.children) {
+      <span class="keyword">var</span> child = <span class="keyword">this</span>.state.children[key];
+      <span class="keyword">if</span> (child) {
+        <span class="comment">// You may need to apply reactive updates to a child as it is leaving.</span>
+        <span class="comment">// The normal React way to do it won't work since the child will have</span>
+        <span class="comment">// already been removed. In case you need this behavior you can provide</span>
+        <span class="comment">// a childFactory function to wrap every child, even the ones that are</span>
+        <span class="comment">// leaving.</span>
+        childrenToRender.push(React.cloneElement(<span class="keyword">this</span>.props.childFactory(child), { ref: key, key: key }));
+      }
+    }
+    <span class="keyword">return</span> React.createElement(<span class="keyword">this</span>.props.component, <span class="keyword">this</span>.props, childrenToRender);
+  }
+});
+
+module.exports = ReactTransitionGroup;</code></pre>

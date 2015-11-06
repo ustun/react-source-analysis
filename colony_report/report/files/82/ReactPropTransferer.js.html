@@ -1,0 +1,109 @@
+<h1>ReactPropTransferer.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactPropTransferer
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> emptyFunction = require(<span class="string">'fbjs/lib/emptyFunction'</span>);
+<span class="keyword">var</span> joinClasses = require(<span class="string">'fbjs/lib/joinClasses'</span>);
+
+<span class="comment">/**
+ * Creates a transfer strategy that will merge prop values using the supplied
+ * `mergeStrategy`. If a prop was previously unset, this just sets it.
+ *
+ * @param {function} mergeStrategy
+ * @return {function}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">createTransferStrategy</span><span class="params">(mergeStrategy)</span> {</span>
+  <span class="keyword">return</span> <span class="function"><span class="keyword">function</span> <span class="params">(props, key, value)</span> {</span>
+    <span class="keyword">if</span> (!props.hasOwnProperty(key)) {
+      props[key] = value;
+    } <span class="keyword">else</span> {
+      props[key] = mergeStrategy(props[key], value);
+    }
+  };
+}
+
+<span class="keyword">var</span> transferStrategyMerge = createTransferStrategy(<span class="function"><span class="keyword">function</span> <span class="params">(a, b)</span> {</span>
+  <span class="comment">// `merge` overrides the first object's (`props[key]` above) keys using the</span>
+  <span class="comment">// second object's (`value`) keys. An object's style's existing `propA` would</span>
+  <span class="comment">// get overridden. Flip the order here.</span>
+  <span class="keyword">return</span> assign({}, b, a);
+});
+
+<span class="comment">/**
+ * Transfer strategies dictate how props are transferred by `transferPropsTo`.
+ * NOTE: if you add any more exceptions to this list you should be sure to
+ * update `cloneWithProps()` accordingly.
+ */</span>
+<span class="keyword">var</span> TransferStrategies = {
+  <span class="comment">/**
+   * Never transfer `children`.
+   */</span>
+  children: emptyFunction,
+  <span class="comment">/**
+   * Transfer the `className` prop by merging them.
+   */</span>
+  className: createTransferStrategy(joinClasses),
+  <span class="comment">/**
+   * Transfer the `style` prop (which is an object) by merging them.
+   */</span>
+  style: transferStrategyMerge
+};
+
+<span class="comment">/**
+ * Mutates the first argument by transferring the properties from the second
+ * argument.
+ *
+ * @param {object} props
+ * @param {object} newProps
+ * @return {object}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">transferInto</span><span class="params">(props, newProps)</span> {</span>
+  <span class="keyword">for</span> (<span class="keyword">var</span> thisKey <span class="keyword">in</span> newProps) {
+    <span class="keyword">if</span> (!newProps.hasOwnProperty(thisKey)) {
+      <span class="keyword">continue</span>;
+    }
+
+    <span class="keyword">var</span> transferStrategy = TransferStrategies[thisKey];
+
+    <span class="keyword">if</span> (transferStrategy &amp;&amp; TransferStrategies.hasOwnProperty(thisKey)) {
+      transferStrategy(props, thisKey, newProps[thisKey]);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (!props.hasOwnProperty(thisKey)) {
+      props[thisKey] = newProps[thisKey];
+    }
+  }
+  <span class="keyword">return</span> props;
+}
+
+<span class="comment">/**
+ * ReactPropTransferer are capable of transferring props to another component
+ * using a `transferPropsTo` method.
+ *
+ * @class ReactPropTransferer
+ */</span>
+<span class="keyword">var</span> ReactPropTransferer = {
+
+  <span class="comment">/**
+   * Merge two props objects using TransferStrategies.
+   *
+   * @param {object} oldProps original props (they take precedence)
+   * @param {object} newProps new props to merge in
+   * @return {object} a new object containing both sets of props merged.
+   */</span>
+  mergeProps: <span class="function"><span class="keyword">function</span> <span class="params">(oldProps, newProps)</span> {</span>
+    <span class="keyword">return</span> transferInto(assign({}, oldProps), newProps);
+  }
+
+};
+
+module.exports = ReactPropTransferer;</code></pre>

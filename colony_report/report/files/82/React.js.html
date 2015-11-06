@@ -1,0 +1,40 @@
+<h1>React.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule React
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactDOM = require(<span class="string">'./ReactDOM'</span>);
+<span class="keyword">var</span> ReactDOMServer = require(<span class="string">'./ReactDOMServer'</span>);
+<span class="keyword">var</span> ReactIsomorphic = require(<span class="string">'./ReactIsomorphic'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> deprecated = require(<span class="string">'./deprecated'</span>);
+
+<span class="comment">// `version` will be added here by ReactIsomorphic.</span>
+<span class="keyword">var</span> React = {};
+
+assign(React, ReactIsomorphic);
+
+assign(React, {
+  <span class="comment">// ReactDOM</span>
+  findDOMNode: deprecated(<span class="string">'findDOMNode'</span>, <span class="string">'ReactDOM'</span>, <span class="string">'react-dom'</span>, ReactDOM, ReactDOM.findDOMNode),
+  render: deprecated(<span class="string">'render'</span>, <span class="string">'ReactDOM'</span>, <span class="string">'react-dom'</span>, ReactDOM, ReactDOM.render),
+  unmountComponentAtNode: deprecated(<span class="string">'unmountComponentAtNode'</span>, <span class="string">'ReactDOM'</span>, <span class="string">'react-dom'</span>, ReactDOM, ReactDOM.unmountComponentAtNode),
+
+  <span class="comment">// ReactDOMServer</span>
+  renderToString: deprecated(<span class="string">'renderToString'</span>, <span class="string">'ReactDOMServer'</span>, <span class="string">'react-dom/server'</span>, ReactDOMServer, ReactDOMServer.renderToString),
+  renderToStaticMarkup: deprecated(<span class="string">'renderToStaticMarkup'</span>, <span class="string">'ReactDOMServer'</span>, <span class="string">'react-dom/server'</span>, ReactDOMServer, ReactDOMServer.renderToStaticMarkup)
+});
+
+React.__SECRET_DOM_DO_NOT_USE_OR_YOU_WILL_BE_FIRED = ReactDOM;
+
+module.exports = React;</code></pre>

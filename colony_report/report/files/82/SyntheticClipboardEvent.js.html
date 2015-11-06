@@ -1,0 +1,40 @@
+<h1>SyntheticClipboardEvent.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule SyntheticClipboardEvent
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> SyntheticEvent = require(<span class="string">'./SyntheticEvent'</span>);
+
+<span class="comment">/**
+ * @interface Event
+ * @see http://www.w3.org/TR/clipboard-apis/
+ */</span>
+<span class="keyword">var</span> ClipboardEventInterface = {
+  clipboardData: <span class="function"><span class="keyword">function</span> <span class="params">(event)</span> {</span>
+    <span class="keyword">return</span> <span class="string">'clipboardData'</span> <span class="keyword">in</span> event ? event.clipboardData : window.clipboardData;
+  }
+};
+
+<span class="comment">/**
+ * @param {object} dispatchConfig Configuration used to dispatch this event.
+ * @param {string} dispatchMarker Marker identifying the event target.
+ * @param {object} nativeEvent Native browser event.
+ * @extends {SyntheticUIEvent}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">SyntheticClipboardEvent</span><span class="params">(dispatchConfig, dispatchMarker, nativeEvent, nativeEventTarget)</span> {</span>
+  SyntheticEvent.call(<span class="keyword">this</span>, dispatchConfig, dispatchMarker, nativeEvent, nativeEventTarget);
+}
+
+SyntheticEvent.augmentClass(SyntheticClipboardEvent, ClipboardEventInterface);
+
+module.exports = SyntheticClipboardEvent;</code></pre>

@@ -1,0 +1,714 @@
+<h1>ReactCompositeComponent.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactCompositeComponent
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactComponentEnvironment = require(<span class="string">'./ReactComponentEnvironment'</span>);
+<span class="keyword">var</span> ReactCurrentOwner = require(<span class="string">'./ReactCurrentOwner'</span>);
+<span class="keyword">var</span> ReactElement = require(<span class="string">'./ReactElement'</span>);
+<span class="keyword">var</span> ReactInstanceMap = require(<span class="string">'./ReactInstanceMap'</span>);
+<span class="keyword">var</span> ReactNodeTypes = require(<span class="string">'./ReactNodeTypes'</span>);
+<span class="keyword">var</span> ReactPerf = require(<span class="string">'./ReactPerf'</span>);
+<span class="keyword">var</span> ReactPropTypeLocations = require(<span class="string">'./ReactPropTypeLocations'</span>);
+<span class="keyword">var</span> ReactPropTypeLocationNames = require(<span class="string">'./ReactPropTypeLocationNames'</span>);
+<span class="keyword">var</span> ReactReconciler = require(<span class="string">'./ReactReconciler'</span>);
+<span class="keyword">var</span> ReactUpdateQueue = require(<span class="string">'./ReactUpdateQueue'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> emptyObject = require(<span class="string">'fbjs/lib/emptyObject'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+<span class="keyword">var</span> shouldUpdateReactComponent = require(<span class="string">'./shouldUpdateReactComponent'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="function"><span class="keyword">function</span> <span class="title">getDeclarationErrorAddendum</span><span class="params">(component)</span> {</span>
+  <span class="keyword">var</span> owner = component._currentElement._owner || <span class="literal">null</span>;
+  <span class="keyword">if</span> (owner) {
+    <span class="keyword">var</span> name = owner.getName();
+    <span class="keyword">if</span> (name) {
+      <span class="keyword">return</span> <span class="string">' Check the render method of `'</span> + name + <span class="string">'`.'</span>;
+    }
+  }
+  <span class="keyword">return</span> <span class="string">''</span>;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">StatelessComponent</span><span class="params">(Component)</span> {</span>}
+StatelessComponent.prototype.render = <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+  <span class="keyword">var</span> Component = ReactInstanceMap.get(<span class="keyword">this</span>)._currentElement.type;
+  <span class="keyword">return</span> Component(<span class="keyword">this</span>.props, <span class="keyword">this</span>.context, <span class="keyword">this</span>.updater);
+};
+
+<span class="comment">/**
+ * ------------------ The Life-Cycle of a Composite Component ------------------
+ *
+ * - constructor: Initialization of state. The instance is now retained.
+ *   - componentWillMount
+ *   - render
+ *   - [children's constructors]
+ *     - [children's componentWillMount and render]
+ *     - [children's componentDidMount]
+ *     - componentDidMount
+ *
+ *       Update Phases:
+ *       - componentWillReceiveProps (only called if parent updated)
+ *       - shouldComponentUpdate
+ *         - componentWillUpdate
+ *           - render
+ *           - [children's constructors or receive props phases]
+ *         - componentDidUpdate
+ *
+ *     - componentWillUnmount
+ *     - [children's componentWillUnmount]
+ *   - [children destroyed]
+ * - (destroyed): The instance is now blank, released by React and ready for GC.
+ *
+ * -----------------------------------------------------------------------------
+ */</span>
+
+<span class="comment">/**
+ * An incrementing ID assigned to each component when it is mounted. This is
+ * used to enforce the order in which `ReactUpdates` updates dirty components.
+ *
+ * @private
+ */</span>
+<span class="keyword">var</span> nextMountID = <span class="number">1</span>;
+
+<span class="comment">/**
+ * @lends {ReactCompositeComponent.prototype}
+ */</span>
+<span class="keyword">var</span> ReactCompositeComponentMixin = {
+
+  <span class="comment">/**
+   * Base constructor for all composite component.
+   *
+   * @param {ReactElement} element
+   * @final
+   * @internal
+   */</span>
+  construct: <span class="function"><span class="keyword">function</span> <span class="params">(element)</span> {</span>
+    <span class="keyword">this</span>._currentElement = element;
+    <span class="keyword">this</span>._rootNodeID = <span class="literal">null</span>;
+    <span class="keyword">this</span>._instance = <span class="literal">null</span>;
+    <span class="keyword">this</span>._nativeParent = <span class="literal">null</span>;
+    <span class="keyword">this</span>._nativeContainerInfo = <span class="literal">null</span>;
+
+    <span class="comment">// See ReactUpdateQueue</span>
+    <span class="keyword">this</span>._pendingElement = <span class="literal">null</span>;
+    <span class="keyword">this</span>._pendingStateQueue = <span class="literal">null</span>;
+    <span class="keyword">this</span>._pendingReplaceState = <span class="literal">false</span>;
+    <span class="keyword">this</span>._pendingForceUpdate = <span class="literal">false</span>;
+
+    <span class="keyword">this</span>._renderedNodeType = <span class="literal">null</span>;
+    <span class="keyword">this</span>._renderedComponent = <span class="literal">null</span>;
+
+    <span class="keyword">this</span>._context = <span class="literal">null</span>;
+    <span class="keyword">this</span>._mountOrder = <span class="number">0</span>;
+    <span class="keyword">this</span>._topLevelWrapper = <span class="literal">null</span>;
+
+    <span class="comment">// See ReactUpdates and ReactUpdateQueue.</span>
+    <span class="keyword">this</span>._pendingCallbacks = <span class="literal">null</span>;
+  },
+
+  <span class="comment">/**
+   * Initializes the component, renders markup, and registers event listeners.
+   *
+   * @param {ReactReconcileTransaction|ReactServerRenderingTransaction} transaction
+   * @param {?object} nativeParent
+   * @param {?object} nativeContainerInfo
+   * @param {?object} context
+   * @return {?string} Rendered markup to be inserted into the DOM.
+   * @final
+   * @internal
+   */</span>
+  mountComponent: <span class="function"><span class="keyword">function</span> <span class="params">(transaction, nativeParent, nativeContainerInfo, context)</span> {</span>
+    <span class="keyword">this</span>._context = context;
+    <span class="keyword">this</span>._mountOrder = nextMountID++;
+    <span class="keyword">this</span>._nativeParent = nativeParent;
+    <span class="keyword">this</span>._nativeContainerInfo = nativeContainerInfo;
+
+    <span class="keyword">var</span> publicProps = <span class="keyword">this</span>._processProps(<span class="keyword">this</span>._currentElement.props);
+    <span class="keyword">var</span> publicContext = <span class="keyword">this</span>._processContext(context);
+
+    <span class="keyword">var</span> Component = <span class="keyword">this</span>._currentElement.type;
+
+    <span class="comment">// Initialize the public class</span>
+    <span class="keyword">var</span> inst;
+    <span class="keyword">var</span> renderedElement;
+
+    <span class="comment">// This is a way to detect if Component is a stateless arrow function</span>
+    <span class="comment">// component, which is not newable. It might not be 100% reliable but is</span>
+    <span class="comment">// something we can do until we start detecting that Component extends</span>
+    <span class="comment">// React.Component. We already assume that typeof Component === 'function'.</span>
+    <span class="keyword">var</span> canInstantiate = (<span class="string">'prototype'</span> <span class="keyword">in</span> Component);
+
+    <span class="keyword">if</span> (canInstantiate) {
+      <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+        ReactCurrentOwner.current = <span class="keyword">this</span>;
+        <span class="keyword">try</span> {
+          inst = <span class="keyword">new</span> Component(publicProps, publicContext, ReactUpdateQueue);
+        } <span class="keyword">finally</span> {
+          ReactCurrentOwner.current = <span class="literal">null</span>;
+        }
+      } <span class="keyword">else</span> {
+        inst = <span class="keyword">new</span> Component(publicProps, publicContext, ReactUpdateQueue);
+      }
+    }
+
+    <span class="keyword">if</span> (!canInstantiate || inst === <span class="literal">null</span> || inst === <span class="literal">false</span> || ReactElement.isValidElement(inst)) {
+      renderedElement = inst;
+      inst = <span class="keyword">new</span> StatelessComponent(Component);
+    }
+
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      <span class="comment">// This will throw later in _renderValidatedComponent, but add an early</span>
+      <span class="comment">// warning now to help debugging</span>
+      <span class="keyword">if</span> (inst.render == <span class="literal">null</span>) {
+        process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'%s(...): No `render` method found on the returned component '</span> + <span class="string">'instance: you may have forgotten to define `render`, returned '</span> + <span class="string">'null/false from a stateless component, or tried to render an '</span> + <span class="string">'element whose type is a function that isn\'t a React component.'</span>, Component.displayName || Component.name || <span class="string">'Component'</span>) : <span class="literal">undefined</span>;
+      } <span class="keyword">else</span> {
+        <span class="comment">// We support ES6 inheriting from React.Component, the module pattern,</span>
+        <span class="comment">// and stateless components, but not ES6 classes that don't extend</span>
+        process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(Component.prototype &amp;&amp; Component.prototype.isReactComponent || !canInstantiate || !(inst <span class="keyword">instanceof</span> Component), <span class="string">'%s(...): React component classes must extend React.Component.'</span>, Component.displayName || Component.name || <span class="string">'Component'</span>) : <span class="literal">undefined</span>;
+      }
+    }
+
+    <span class="comment">// These should be set up in the constructor, but as a convenience for</span>
+    <span class="comment">// simpler class abstractions, we set them up after the fact.</span>
+    inst.props = publicProps;
+    inst.context = publicContext;
+    inst.refs = emptyObject;
+    inst.updater = ReactUpdateQueue;
+
+    <span class="keyword">this</span>._instance = inst;
+
+    <span class="comment">// Store a reference from the instance back to the internal representation</span>
+    ReactInstanceMap.set(inst, <span class="keyword">this</span>);
+
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      <span class="comment">// Since plain JS classes are defined without any special initialization</span>
+      <span class="comment">// logic, we can not catch common errors early. Therefore, we have to</span>
+      <span class="comment">// catch them here, at initialization time, instead.</span>
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(!inst.getInitialState || inst.getInitialState.isReactClassApproved, <span class="string">'getInitialState was defined on %s, a plain JavaScript class. '</span> + <span class="string">'This is only supported for classes created using React.createClass. '</span> + <span class="string">'Did you mean to define a state property instead?'</span>, <span class="keyword">this</span>.getName() || <span class="string">'a component'</span>) : <span class="literal">undefined</span>;
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(!inst.getDefaultProps || inst.getDefaultProps.isReactClassApproved, <span class="string">'getDefaultProps was defined on %s, a plain JavaScript class. '</span> + <span class="string">'This is only supported for classes created using React.createClass. '</span> + <span class="string">'Use a static property to define defaultProps instead.'</span>, <span class="keyword">this</span>.getName() || <span class="string">'a component'</span>) : <span class="literal">undefined</span>;
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(!inst.propTypes, <span class="string">'propTypes was defined as an instance property on %s. Use a static '</span> + <span class="string">'property to define propTypes instead.'</span>, <span class="keyword">this</span>.getName() || <span class="string">'a component'</span>) : <span class="literal">undefined</span>;
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(!inst.contextTypes, <span class="string">'contextTypes was defined as an instance property on %s. Use a '</span> + <span class="string">'static property to define contextTypes instead.'</span>, <span class="keyword">this</span>.getName() || <span class="string">'a component'</span>) : <span class="literal">undefined</span>;
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="keyword">typeof</span> inst.componentShouldUpdate !== <span class="string">'function'</span>, <span class="string">'%s has a method called '</span> + <span class="string">'componentShouldUpdate(). Did you mean shouldComponentUpdate()? '</span> + <span class="string">'The name is phrased as a question because the function is '</span> + <span class="string">'expected to return a value.'</span>, <span class="keyword">this</span>.getName() || <span class="string">'A component'</span>) : <span class="literal">undefined</span>;
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="keyword">typeof</span> inst.componentDidUnmount !== <span class="string">'function'</span>, <span class="string">'%s has a method called '</span> + <span class="string">'componentDidUnmount(). But there is no such lifecycle method. '</span> + <span class="string">'Did you mean componentWillUnmount()?'</span>, <span class="keyword">this</span>.getName() || <span class="string">'A component'</span>) : <span class="literal">undefined</span>;
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="keyword">typeof</span> inst.componentWillRecieveProps !== <span class="string">'function'</span>, <span class="string">'%s has a method called '</span> + <span class="string">'componentWillRecieveProps(). Did you mean componentWillReceiveProps()?'</span>, <span class="keyword">this</span>.getName() || <span class="string">'A component'</span>) : <span class="literal">undefined</span>;
+    }
+
+    <span class="keyword">var</span> initialState = inst.state;
+    <span class="keyword">if</span> (initialState === <span class="literal">undefined</span>) {
+      inst.state = initialState = <span class="literal">null</span>;
+    }
+    !(<span class="keyword">typeof</span> initialState === <span class="string">'object'</span> &amp;&amp; !Array.isArray(initialState)) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'%s.state: must be set to an object or null'</span>, <span class="keyword">this</span>.getName() || <span class="string">'ReactCompositeComponent'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+    <span class="keyword">this</span>._pendingStateQueue = <span class="literal">null</span>;
+    <span class="keyword">this</span>._pendingReplaceState = <span class="literal">false</span>;
+    <span class="keyword">this</span>._pendingForceUpdate = <span class="literal">false</span>;
+
+    <span class="keyword">if</span> (inst.componentWillMount) {
+      inst.componentWillMount();
+      <span class="comment">// When mounting, calls to `setState` by `componentWillMount` will set</span>
+      <span class="comment">// `this._pendingStateQueue` without triggering a re-render.</span>
+      <span class="keyword">if</span> (<span class="keyword">this</span>._pendingStateQueue) {
+        inst.state = <span class="keyword">this</span>._processPendingState(inst.props, inst.context);
+      }
+    }
+
+    <span class="comment">// If not a stateless component, we now render</span>
+    <span class="keyword">if</span> (renderedElement === <span class="literal">undefined</span>) {
+      renderedElement = <span class="keyword">this</span>._renderValidatedComponent();
+    }
+
+    <span class="keyword">this</span>._renderedNodeType = ReactNodeTypes.getType(renderedElement);
+    <span class="keyword">this</span>._renderedComponent = <span class="keyword">this</span>._instantiateReactComponent(renderedElement);
+
+    <span class="keyword">var</span> markup = ReactReconciler.mountComponent(<span class="keyword">this</span>._renderedComponent, transaction, nativeParent, nativeContainerInfo, <span class="keyword">this</span>._processChildContext(context));
+    <span class="keyword">if</span> (inst.componentDidMount) {
+      transaction.getReactMountReady().enqueue(inst.componentDidMount, inst);
+    }
+
+    <span class="keyword">return</span> markup;
+  },
+
+  getNativeNode: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> ReactReconciler.getNativeNode(<span class="keyword">this</span>._renderedComponent);
+  },
+
+  <span class="comment">/**
+   * Releases any resources allocated by `mountComponent`.
+   *
+   * @final
+   * @internal
+   */</span>
+  unmountComponent: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">var</span> inst = <span class="keyword">this</span>._instance;
+
+    <span class="keyword">if</span> (inst.componentWillUnmount) {
+      inst.componentWillUnmount();
+    }
+
+    ReactReconciler.unmountComponent(<span class="keyword">this</span>._renderedComponent);
+    <span class="keyword">this</span>._renderedNodeType = <span class="literal">null</span>;
+    <span class="keyword">this</span>._renderedComponent = <span class="literal">null</span>;
+    <span class="keyword">this</span>._instance = <span class="literal">null</span>;
+
+    <span class="comment">// Reset pending fields</span>
+    <span class="comment">// Even if this component is scheduled for another update in ReactUpdates,</span>
+    <span class="comment">// it would still be ignored because these fields are reset.</span>
+    <span class="keyword">this</span>._pendingStateQueue = <span class="literal">null</span>;
+    <span class="keyword">this</span>._pendingReplaceState = <span class="literal">false</span>;
+    <span class="keyword">this</span>._pendingForceUpdate = <span class="literal">false</span>;
+    <span class="keyword">this</span>._pendingCallbacks = <span class="literal">null</span>;
+    <span class="keyword">this</span>._pendingElement = <span class="literal">null</span>;
+
+    <span class="comment">// These fields do not really need to be reset since this object is no</span>
+    <span class="comment">// longer accessible.</span>
+    <span class="keyword">this</span>._context = <span class="literal">null</span>;
+    <span class="keyword">this</span>._rootNodeID = <span class="literal">null</span>;
+    <span class="keyword">this</span>._topLevelWrapper = <span class="literal">null</span>;
+
+    <span class="comment">// Delete the reference from the instance to this internal representation</span>
+    <span class="comment">// which allow the internals to be properly cleaned up even if the user</span>
+    <span class="comment">// leaks a reference to the public instance.</span>
+    ReactInstanceMap.remove(inst);
+
+    <span class="comment">// Some existing components rely on inst.props even after they've been</span>
+    <span class="comment">// destroyed (in event handlers).</span>
+    <span class="comment">// TODO: inst.props = null;</span>
+    <span class="comment">// TODO: inst.state = null;</span>
+    <span class="comment">// TODO: inst.context = null;</span>
+  },
+
+  <span class="comment">/**
+   * Filters the context object to only contain keys specified in
+   * `contextTypes`
+   *
+   * @param {object} context
+   * @return {?object}
+   * @private
+   */</span>
+  _maskContext: <span class="function"><span class="keyword">function</span> <span class="params">(context)</span> {</span>
+    <span class="keyword">var</span> Component = <span class="keyword">this</span>._currentElement.type;
+    <span class="keyword">var</span> contextTypes = Component.contextTypes;
+    <span class="keyword">if</span> (!contextTypes) {
+      <span class="keyword">return</span> emptyObject;
+    }
+    <span class="keyword">var</span> maskedContext = {};
+    <span class="keyword">for</span> (<span class="keyword">var</span> contextName <span class="keyword">in</span> contextTypes) {
+      maskedContext[contextName] = context[contextName];
+    }
+    <span class="keyword">return</span> maskedContext;
+  },
+
+  <span class="comment">/**
+   * Filters the context object to only contain keys specified in
+   * `contextTypes`, and asserts that they are valid.
+   *
+   * @param {object} context
+   * @return {?object}
+   * @private
+   */</span>
+  _processContext: <span class="function"><span class="keyword">function</span> <span class="params">(context)</span> {</span>
+    <span class="keyword">var</span> maskedContext = <span class="keyword">this</span>._maskContext(context);
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      <span class="keyword">var</span> Component = <span class="keyword">this</span>._currentElement.type;
+      <span class="keyword">if</span> (Component.contextTypes) {
+        <span class="keyword">this</span>._checkPropTypes(Component.contextTypes, maskedContext, ReactPropTypeLocations.context);
+      }
+    }
+    <span class="keyword">return</span> maskedContext;
+  },
+
+  <span class="comment">/**
+   * @param {object} currentContext
+   * @return {object}
+   * @private
+   */</span>
+  _processChildContext: <span class="function"><span class="keyword">function</span> <span class="params">(currentContext)</span> {</span>
+    <span class="keyword">var</span> Component = <span class="keyword">this</span>._currentElement.type;
+    <span class="keyword">var</span> inst = <span class="keyword">this</span>._instance;
+    <span class="keyword">var</span> childContext = inst.getChildContext &amp;&amp; inst.getChildContext();
+    <span class="keyword">if</span> (childContext) {
+      !(<span class="keyword">typeof</span> Component.childContextTypes === <span class="string">'object'</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'%s.getChildContext(): childContextTypes must be defined in order to '</span> + <span class="string">'use getChildContext().'</span>, <span class="keyword">this</span>.getName() || <span class="string">'ReactCompositeComponent'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+      <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+        <span class="keyword">this</span>._checkPropTypes(Component.childContextTypes, childContext, ReactPropTypeLocations.childContext);
+      }
+      <span class="keyword">for</span> (<span class="keyword">var</span> name <span class="keyword">in</span> childContext) {
+        !(name <span class="keyword">in</span> Component.childContextTypes) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'%s.getChildContext(): key "%s" is not defined in childContextTypes.'</span>, <span class="keyword">this</span>.getName() || <span class="string">'ReactCompositeComponent'</span>, name) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+      }
+      <span class="keyword">return</span> assign({}, currentContext, childContext);
+    }
+    <span class="keyword">return</span> currentContext;
+  },
+
+  <span class="comment">/**
+   * Processes props by setting default values for unspecified props and
+   * asserting that the props are valid. Does not mutate its argument; returns
+   * a new props object with defaults merged in.
+   *
+   * @param {object} newProps
+   * @return {object}
+   * @private
+   */</span>
+  _processProps: <span class="function"><span class="keyword">function</span> <span class="params">(newProps)</span> {</span>
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      <span class="keyword">var</span> Component = <span class="keyword">this</span>._currentElement.type;
+      <span class="keyword">if</span> (Component.propTypes) {
+        <span class="keyword">this</span>._checkPropTypes(Component.propTypes, newProps, ReactPropTypeLocations.prop);
+      }
+    }
+    <span class="keyword">return</span> newProps;
+  },
+
+  <span class="comment">/**
+   * Assert that the props are valid
+   *
+   * @param {object} propTypes Map of prop name to a ReactPropType
+   * @param {object} props
+   * @param {string} location e.g. "prop", "context", "child context"
+   * @private
+   */</span>
+  _checkPropTypes: <span class="function"><span class="keyword">function</span> <span class="params">(propTypes, props, location)</span> {</span>
+    <span class="comment">// TODO: Stop validating prop types here and only use the element</span>
+    <span class="comment">// validation.</span>
+    <span class="keyword">var</span> componentName = <span class="keyword">this</span>.getName();
+    <span class="keyword">for</span> (<span class="keyword">var</span> propName <span class="keyword">in</span> propTypes) {
+      <span class="keyword">if</span> (propTypes.hasOwnProperty(propName)) {
+        <span class="keyword">var</span> error;
+        <span class="keyword">try</span> {
+          <span class="comment">// This is intentionally an invariant that gets caught. It's the same</span>
+          <span class="comment">// behavior as without this statement except with a better message.</span>
+          !(<span class="keyword">typeof</span> propTypes[propName] === <span class="string">'function'</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'%s: %s type `%s` is invalid; it must be a function, usually '</span> + <span class="string">'from React.PropTypes.'</span>, componentName || <span class="string">'React class'</span>, ReactPropTypeLocationNames[location], propName) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+          error = propTypes[propName](props, propName, componentName, location);
+        } <span class="keyword">catch</span> (ex) {
+          error = ex;
+        }
+        <span class="keyword">if</span> (error <span class="keyword">instanceof</span> Error) {
+          <span class="comment">// We may want to extend this logic for similar errors in</span>
+          <span class="comment">// top-level render calls, so I'm abstracting it away into</span>
+          <span class="comment">// a function to minimize refactoring in the future</span>
+          <span class="keyword">var</span> addendum = getDeclarationErrorAddendum(<span class="keyword">this</span>);
+
+          <span class="keyword">if</span> (location === ReactPropTypeLocations.prop) {
+            <span class="comment">// Preface gives us something to blacklist in warning module</span>
+            process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'Failed Composite propType: %s%s'</span>, error.message, addendum) : <span class="literal">undefined</span>;
+          } <span class="keyword">else</span> {
+            process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'Failed Context Types: %s%s'</span>, error.message, addendum) : <span class="literal">undefined</span>;
+          }
+        }
+      }
+    }
+  },
+
+  receiveComponent: <span class="function"><span class="keyword">function</span> <span class="params">(nextElement, transaction, nextContext)</span> {</span>
+    <span class="keyword">var</span> prevElement = <span class="keyword">this</span>._currentElement;
+    <span class="keyword">var</span> prevContext = <span class="keyword">this</span>._context;
+
+    <span class="keyword">this</span>._pendingElement = <span class="literal">null</span>;
+
+    <span class="keyword">this</span>.updateComponent(transaction, prevElement, nextElement, prevContext, nextContext);
+  },
+
+  <span class="comment">/**
+   * If any of `_pendingElement`, `_pendingStateQueue`, or `_pendingForceUpdate`
+   * is set, update the component.
+   *
+   * @param {ReactReconcileTransaction} transaction
+   * @internal
+   */</span>
+  performUpdateIfNecessary: <span class="function"><span class="keyword">function</span> <span class="params">(transaction)</span> {</span>
+    <span class="keyword">if</span> (<span class="keyword">this</span>._pendingElement != <span class="literal">null</span>) {
+      ReactReconciler.receiveComponent(<span class="keyword">this</span>, <span class="keyword">this</span>._pendingElement || <span class="keyword">this</span>._currentElement, transaction, <span class="keyword">this</span>._context);
+    }
+
+    <span class="keyword">if</span> (<span class="keyword">this</span>._pendingStateQueue !== <span class="literal">null</span> || <span class="keyword">this</span>._pendingForceUpdate) {
+      <span class="keyword">this</span>.updateComponent(transaction, <span class="keyword">this</span>._currentElement, <span class="keyword">this</span>._currentElement, <span class="keyword">this</span>._context, <span class="keyword">this</span>._context);
+    }
+  },
+
+  <span class="comment">/**
+   * Perform an update to a mounted component. The componentWillReceiveProps and
+   * shouldComponentUpdate methods are called, then (assuming the update isn't
+   * skipped) the remaining update lifecycle methods are called and the DOM
+   * representation is updated.
+   *
+   * By default, this implements React's rendering and reconciliation algorithm.
+   * Sophisticated clients may wish to override this.
+   *
+   * @param {ReactReconcileTransaction} transaction
+   * @param {ReactElement} prevParentElement
+   * @param {ReactElement} nextParentElement
+   * @internal
+   * @overridable
+   */</span>
+  updateComponent: <span class="function"><span class="keyword">function</span> <span class="params">(transaction, prevParentElement, nextParentElement, prevUnmaskedContext, nextUnmaskedContext)</span> {</span>
+    <span class="keyword">var</span> inst = <span class="keyword">this</span>._instance;
+
+    <span class="keyword">var</span> nextContext = <span class="keyword">this</span>._context === nextUnmaskedContext ? inst.context : <span class="keyword">this</span>._processContext(nextUnmaskedContext);
+    <span class="keyword">var</span> nextProps;
+
+    <span class="comment">// Distinguish between a props update versus a simple state update</span>
+    <span class="keyword">if</span> (prevParentElement === nextParentElement) {
+      <span class="comment">// Skip checking prop types again -- we don't read inst.props to avoid</span>
+      <span class="comment">// warning for DOM component props in this upgrade</span>
+      nextProps = nextParentElement.props;
+    } <span class="keyword">else</span> {
+      nextProps = <span class="keyword">this</span>._processProps(nextParentElement.props);
+      <span class="comment">// An update here will schedule an update but immediately set</span>
+      <span class="comment">// _pendingStateQueue which will ensure that any state updates gets</span>
+      <span class="comment">// immediately reconciled instead of waiting for the next batch.</span>
+
+      <span class="keyword">if</span> (inst.componentWillReceiveProps) {
+        inst.componentWillReceiveProps(nextProps, nextContext);
+      }
+    }
+
+    <span class="keyword">var</span> nextState = <span class="keyword">this</span>._processPendingState(nextProps, nextContext);
+
+    <span class="keyword">var</span> shouldUpdate = <span class="keyword">this</span>._pendingForceUpdate || !inst.shouldComponentUpdate || inst.shouldComponentUpdate(nextProps, nextState, nextContext);
+
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="keyword">typeof</span> shouldUpdate !== <span class="string">'undefined'</span>, <span class="string">'%s.shouldComponentUpdate(): Returned undefined instead of a '</span> + <span class="string">'boolean value. Make sure to return true or false.'</span>, <span class="keyword">this</span>.getName() || <span class="string">'ReactCompositeComponent'</span>) : <span class="literal">undefined</span>;
+    }
+
+    <span class="keyword">if</span> (shouldUpdate) {
+      <span class="keyword">this</span>._pendingForceUpdate = <span class="literal">false</span>;
+      <span class="comment">// Will set `this.props`, `this.state` and `this.context`.</span>
+      <span class="keyword">this</span>._performComponentUpdate(nextParentElement, nextProps, nextState, nextContext, transaction, nextUnmaskedContext);
+    } <span class="keyword">else</span> {
+      <span class="comment">// If it's determined that a component should not update, we still want</span>
+      <span class="comment">// to set props and state but we shortcut the rest of the update.</span>
+      <span class="keyword">this</span>._currentElement = nextParentElement;
+      <span class="keyword">this</span>._context = nextUnmaskedContext;
+      inst.props = nextProps;
+      inst.state = nextState;
+      inst.context = nextContext;
+    }
+  },
+
+  _processPendingState: <span class="function"><span class="keyword">function</span> <span class="params">(props, context)</span> {</span>
+    <span class="keyword">var</span> inst = <span class="keyword">this</span>._instance;
+    <span class="keyword">var</span> queue = <span class="keyword">this</span>._pendingStateQueue;
+    <span class="keyword">var</span> replace = <span class="keyword">this</span>._pendingReplaceState;
+    <span class="keyword">this</span>._pendingReplaceState = <span class="literal">false</span>;
+    <span class="keyword">this</span>._pendingStateQueue = <span class="literal">null</span>;
+
+    <span class="keyword">if</span> (!queue) {
+      <span class="keyword">return</span> inst.state;
+    }
+
+    <span class="keyword">if</span> (replace &amp;&amp; queue.length === <span class="number">1</span>) {
+      <span class="keyword">return</span> queue[<span class="number">0</span>];
+    }
+
+    <span class="keyword">var</span> nextState = assign({}, replace ? queue[<span class="number">0</span>] : inst.state);
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = replace ? <span class="number">1</span> : <span class="number">0</span>; i &lt; queue.length; i++) {
+      <span class="keyword">var</span> partial = queue[i];
+      assign(nextState, <span class="keyword">typeof</span> partial === <span class="string">'function'</span> ? partial.call(inst, nextState, props, context) : partial);
+    }
+
+    <span class="keyword">return</span> nextState;
+  },
+
+  <span class="comment">/**
+   * Merges new props and state, notifies delegate methods of update and
+   * performs update.
+   *
+   * @param {ReactElement} nextElement Next element
+   * @param {object} nextProps Next public object to set as properties.
+   * @param {?object} nextState Next object to set as state.
+   * @param {?object} nextContext Next public object to set as context.
+   * @param {ReactReconcileTransaction} transaction
+   * @param {?object} unmaskedContext
+   * @private
+   */</span>
+  _performComponentUpdate: <span class="function"><span class="keyword">function</span> <span class="params">(nextElement, nextProps, nextState, nextContext, transaction, unmaskedContext)</span> {</span>
+    <span class="keyword">var</span> inst = <span class="keyword">this</span>._instance;
+
+    <span class="keyword">var</span> hasComponentDidUpdate = Boolean(inst.componentDidUpdate);
+    <span class="keyword">var</span> prevProps;
+    <span class="keyword">var</span> prevState;
+    <span class="keyword">var</span> prevContext;
+    <span class="keyword">if</span> (hasComponentDidUpdate) {
+      prevProps = inst.props;
+      prevState = inst.state;
+      prevContext = inst.context;
+    }
+
+    <span class="keyword">if</span> (inst.componentWillUpdate) {
+      inst.componentWillUpdate(nextProps, nextState, nextContext);
+    }
+
+    <span class="keyword">this</span>._currentElement = nextElement;
+    <span class="keyword">this</span>._context = unmaskedContext;
+    inst.props = nextProps;
+    inst.state = nextState;
+    inst.context = nextContext;
+
+    <span class="keyword">this</span>._updateRenderedComponent(transaction, unmaskedContext);
+
+    <span class="keyword">if</span> (hasComponentDidUpdate) {
+      transaction.getReactMountReady().enqueue(inst.componentDidUpdate.bind(inst, prevProps, prevState, prevContext), inst);
+    }
+  },
+
+  <span class="comment">/**
+   * Call the component's `render` method and update the DOM accordingly.
+   *
+   * @param {ReactReconcileTransaction} transaction
+   * @internal
+   */</span>
+  _updateRenderedComponent: <span class="function"><span class="keyword">function</span> <span class="params">(transaction, context)</span> {</span>
+    <span class="keyword">var</span> prevComponentInstance = <span class="keyword">this</span>._renderedComponent;
+    <span class="keyword">var</span> prevRenderedElement = prevComponentInstance._currentElement;
+    <span class="keyword">var</span> nextRenderedElement = <span class="keyword">this</span>._renderValidatedComponent();
+    <span class="keyword">if</span> (shouldUpdateReactComponent(prevRenderedElement, nextRenderedElement)) {
+      ReactReconciler.receiveComponent(prevComponentInstance, nextRenderedElement, transaction, <span class="keyword">this</span>._processChildContext(context));
+    } <span class="keyword">else</span> {
+      <span class="comment">// TODO: This is currently necessary due to the unfortunate caching</span>
+      <span class="comment">// that ReactMount does which makes it exceedingly difficult to unmount</span>
+      <span class="comment">// a set of siblings without accidentally repopulating the node cache (see</span>
+      <span class="comment">// #5151). Once ReactMount no longer stores the nodes by ID, this method</span>
+      <span class="comment">// can go away.</span>
+      <span class="keyword">var</span> oldNativeNode = ReactReconciler.getNativeNode(prevComponentInstance);
+
+      ReactReconciler.unmountComponent(prevComponentInstance);
+
+      <span class="keyword">this</span>._renderedNodeType = ReactNodeTypes.getType(nextRenderedElement);
+      <span class="keyword">this</span>._renderedComponent = <span class="keyword">this</span>._instantiateReactComponent(nextRenderedElement);
+      <span class="keyword">var</span> nextMarkup = ReactReconciler.mountComponent(<span class="keyword">this</span>._renderedComponent, transaction, <span class="keyword">this</span>._nativeParent, <span class="keyword">this</span>._nativeContainerInfo, <span class="keyword">this</span>._processChildContext(context));
+      <span class="keyword">this</span>._replaceNodeWithMarkup(oldNativeNode, nextMarkup);
+    }
+  },
+
+  <span class="comment">/**
+   * Overridden in shallow rendering.
+   *
+   * @protected
+   */</span>
+  _replaceNodeWithMarkup: <span class="function"><span class="keyword">function</span> <span class="params">(oldNativeNode, nextMarkup)</span> {</span>
+    ReactComponentEnvironment.replaceNodeWithMarkup(oldNativeNode, nextMarkup);
+  },
+
+  <span class="comment">/**
+   * @protected
+   */</span>
+  _renderValidatedComponentWithoutOwnerOrContext: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">var</span> inst = <span class="keyword">this</span>._instance;
+    <span class="keyword">var</span> renderedComponent = inst.render();
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      <span class="comment">// We allow auto-mocks to proceed as if they're returning null.</span>
+      <span class="keyword">if</span> (<span class="keyword">typeof</span> renderedComponent === <span class="string">'undefined'</span> &amp;&amp; inst.render._isMockFunction) {
+        <span class="comment">// This is probably bad practice. Consider warning here and</span>
+        <span class="comment">// deprecating this convenience.</span>
+        renderedComponent = <span class="literal">null</span>;
+      }
+    }
+
+    <span class="keyword">return</span> renderedComponent;
+  },
+
+  <span class="comment">/**
+   * @private
+   */</span>
+  _renderValidatedComponent: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">var</span> renderedComponent;
+    ReactCurrentOwner.current = <span class="keyword">this</span>;
+    <span class="keyword">try</span> {
+      renderedComponent = <span class="keyword">this</span>._renderValidatedComponentWithoutOwnerOrContext();
+    } <span class="keyword">finally</span> {
+      ReactCurrentOwner.current = <span class="literal">null</span>;
+    }
+    !(
+    <span class="comment">// TODO: An `isValidNode` function would probably be more appropriate</span>
+    renderedComponent === <span class="literal">null</span> || renderedComponent === <span class="literal">false</span> || ReactElement.isValidElement(renderedComponent)) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'%s.render(): A valid ReactComponent must be returned. You may have '</span> + <span class="string">'returned undefined, an array or some other invalid object.'</span>, <span class="keyword">this</span>.getName() || <span class="string">'ReactCompositeComponent'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    <span class="keyword">return</span> renderedComponent;
+  },
+
+  <span class="comment">/**
+   * Lazily allocates the refs object and stores `component` as `ref`.
+   *
+   * @param {string} ref Reference name.
+   * @param {component} component Component to store as `ref`.
+   * @final
+   * @private
+   */</span>
+  attachRef: <span class="function"><span class="keyword">function</span> <span class="params">(ref, component)</span> {</span>
+    <span class="keyword">var</span> inst = <span class="keyword">this</span>.getPublicInstance();
+    !(inst != <span class="literal">null</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Stateless function components cannot have refs.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    <span class="keyword">var</span> publicComponentInstance = component.getPublicInstance();
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      <span class="keyword">var</span> componentName = component &amp;&amp; component.getName ? component.getName() : <span class="string">'a component'</span>;
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(publicComponentInstance != <span class="literal">null</span>, <span class="string">'Stateless function components cannot be given refs '</span> + <span class="string">'(See ref "%s" in %s created by %s). '</span> + <span class="string">'Attempts to access this ref will fail.'</span>, ref, componentName, <span class="keyword">this</span>.getName()) : <span class="literal">undefined</span>;
+    }
+    <span class="keyword">var</span> refs = inst.refs === emptyObject ? inst.refs = {} : inst.refs;
+    refs[ref] = publicComponentInstance;
+  },
+
+  <span class="comment">/**
+   * Detaches a reference name.
+   *
+   * @param {string} ref Name to dereference.
+   * @final
+   * @private
+   */</span>
+  detachRef: <span class="function"><span class="keyword">function</span> <span class="params">(ref)</span> {</span>
+    <span class="keyword">var</span> refs = <span class="keyword">this</span>.getPublicInstance().refs;
+    <span class="keyword">delete</span> refs[ref];
+  },
+
+  <span class="comment">/**
+   * Get a text description of the component that can be used to identify it
+   * in error messages.
+   * @return {string} The name or null.
+   * @internal
+   */</span>
+  getName: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">var</span> type = <span class="keyword">this</span>._currentElement.type;
+    <span class="keyword">var</span> constructor = <span class="keyword">this</span>._instance &amp;&amp; <span class="keyword">this</span>._instance.constructor;
+    <span class="keyword">return</span> type.displayName || constructor &amp;&amp; constructor.displayName || type.name || constructor &amp;&amp; constructor.name || <span class="literal">null</span>;
+  },
+
+  <span class="comment">/**
+   * Get the publicly accessible representation of this component - i.e. what
+   * is exposed by refs and returned by render. Can be null for stateless
+   * components.
+   *
+   * @return {ReactComponent} the public component instance.
+   * @internal
+   */</span>
+  getPublicInstance: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">var</span> inst = <span class="keyword">this</span>._instance;
+    <span class="keyword">if</span> (inst <span class="keyword">instanceof</span> StatelessComponent) {
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    }
+    <span class="keyword">return</span> inst;
+  },
+
+  <span class="comment">// Stub</span>
+  _instantiateReactComponent: <span class="literal">null</span>
+
+};
+
+ReactPerf.measureMethods(ReactCompositeComponentMixin, <span class="string">'ReactCompositeComponent'</span>, {
+  mountComponent: <span class="string">'mountComponent'</span>,
+  updateComponent: <span class="string">'updateComponent'</span>,
+  _renderValidatedComponent: <span class="string">'_renderValidatedComponent'</span>
+});
+
+<span class="keyword">var</span> ReactCompositeComponent = {
+
+  Mixin: ReactCompositeComponentMixin
+
+};
+
+module.exports = ReactCompositeComponent;</code></pre>

@@ -1,0 +1,37 @@
+<h1>ReactBrowserComponentMixin.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactBrowserComponentMixin
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactInstanceMap = require(<span class="string">'./ReactInstanceMap'</span>);
+
+<span class="keyword">var</span> findDOMNode = require(<span class="string">'./findDOMNode'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="keyword">var</span> didWarnKey = <span class="string">'_getDOMNodeDidWarn'</span>;
+
+<span class="keyword">var</span> ReactBrowserComponentMixin = {
+  <span class="comment">/**
+   * Returns the DOM node rendered by this component.
+   *
+   * @return {DOMElement} The root node of this component.
+   * @final
+   * @protected
+   */</span>
+  getDOMNode: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="keyword">this</span>.constructor[didWarnKey], <span class="string">'%s.getDOMNode(...) is deprecated. Please use '</span> + <span class="string">'ReactDOM.findDOMNode(instance) instead.'</span>, ReactInstanceMap.get(<span class="keyword">this</span>).getName() || <span class="keyword">this</span>.tagName || <span class="string">'Unknown'</span>) : <span class="literal">undefined</span>;
+    <span class="keyword">this</span>.constructor[didWarnKey] = <span class="literal">true</span>;
+    <span class="keyword">return</span> findDOMNode(<span class="keyword">this</span>);
+  }
+};
+
+module.exports = ReactBrowserComponentMixin;</code></pre>

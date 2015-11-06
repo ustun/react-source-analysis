@@ -1,0 +1,217 @@
+<h1>reactComponentExpect.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule reactComponentExpect
+ * @nolint
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactInstanceMap = require(<span class="string">'./ReactInstanceMap'</span>);
+<span class="keyword">var</span> ReactTestUtils = require(<span class="string">'./ReactTestUtils'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+
+<span class="function"><span class="keyword">function</span> <span class="title">reactComponentExpect</span><span class="params">(instance)</span> {</span>
+  <span class="keyword">if</span> (instance <span class="keyword">instanceof</span> reactComponentExpectInternal) {
+    <span class="keyword">return</span> instance;
+  }
+
+  <span class="keyword">if</span> (!(<span class="keyword">this</span> <span class="keyword">instanceof</span> reactComponentExpect)) {
+    <span class="keyword">return</span> <span class="keyword">new</span> reactComponentExpect(instance);
+  }
+
+  expect(instance).not.toBeNull();
+  expect(instance).not.toBeUndefined();
+
+  !ReactTestUtils.isCompositeComponent(instance) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'reactComponentExpect(...): instance must be a composite component'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  <span class="keyword">var</span> internalInstance = ReactInstanceMap.get(instance);
+
+  expect(<span class="keyword">typeof</span> internalInstance).toBe(<span class="string">'object'</span>);
+  expect(<span class="keyword">typeof</span> internalInstance.constructor).toBe(<span class="string">'function'</span>);
+  expect(ReactTestUtils.isElement(internalInstance)).toBe(<span class="literal">false</span>);
+
+  <span class="keyword">return</span> <span class="keyword">new</span> reactComponentExpectInternal(internalInstance);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">reactComponentExpectInternal</span><span class="params">(internalInstance)</span> {</span>
+  <span class="keyword">this</span>._instance = internalInstance;
+}
+
+assign(reactComponentExpectInternal.prototype, {
+  <span class="comment">// Getters -------------------------------------------------------------------</span>
+
+  <span class="comment">/**
+   * @instance: Retrieves the backing instance.
+   */</span>
+  instance: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> <span class="keyword">this</span>._instance.getPublicInstance();
+  },
+
+  <span class="comment">/**
+   * There are two types of components in the world.
+   * - A component created via React.createClass() - Has a single child
+   *   subComponent - the return value from the .render() function. This
+   *   function @subComponent expects that this._instance is component created
+   *   with React.createClass().
+   * - A primitive DOM component - which has many renderedChildren, each of
+   *   which may have a name that is unique with respect to its siblings. This
+   *   method will fail if this._instance is a primitive component.
+   *
+   * TL;DR: An instance may have a subComponent (this._renderedComponent) or
+   * renderedChildren, but never both. Neither will actually show up until you
+   * render the component (simply instantiating is not enough).
+   */</span>
+  expectRenderedChild: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">this</span>.toBeCompositeComponent();
+    <span class="keyword">var</span> child = <span class="keyword">this</span>._instance._renderedComponent;
+    <span class="comment">// TODO: Hide ReactEmptyComponent instances here?</span>
+    <span class="keyword">return</span> <span class="keyword">new</span> reactComponentExpectInternal(child);
+  },
+
+  <span class="comment">/**
+   * The nth child of a DOMish component instance that is not falsy.
+   */</span>
+  expectRenderedChildAt: <span class="function"><span class="keyword">function</span> <span class="params">(childIndex)</span> {</span>
+    <span class="comment">// Currently only dom components have arrays of children, but that will</span>
+    <span class="comment">// change soon.</span>
+    <span class="keyword">this</span>.toBeDOMComponent();
+    <span class="keyword">var</span> renderedChildren = <span class="keyword">this</span>._instance._renderedChildren || {};
+    <span class="keyword">for</span> (<span class="keyword">var</span> name <span class="keyword">in</span> renderedChildren) {
+      <span class="keyword">if</span> (!renderedChildren.hasOwnProperty(name)) {
+        <span class="keyword">continue</span>;
+      }
+      <span class="keyword">if</span> (renderedChildren[name]) {
+        <span class="keyword">if</span> (renderedChildren[name]._mountIndex === childIndex) {
+          <span class="keyword">return</span> <span class="keyword">new</span> reactComponentExpectInternal(renderedChildren[name]);
+        }
+      }
+    }
+    <span class="keyword">throw</span> <span class="keyword">new</span> Error(<span class="string">'Child:'</span> + childIndex + <span class="string">' is not found'</span>);
+  },
+
+  toBeDOMComponentWithChildCount: <span class="function"><span class="keyword">function</span> <span class="params">(count)</span> {</span>
+    <span class="keyword">this</span>.toBeDOMComponent();
+    <span class="keyword">var</span> renderedChildren = <span class="keyword">this</span>._instance._renderedChildren;
+    expect(renderedChildren).toBeTruthy();
+    expect(Object.keys(renderedChildren).length).toBe(count);
+    <span class="keyword">return</span> <span class="keyword">this</span>;
+  },
+
+  toBeDOMComponentWithNoChildren: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">this</span>.toBeDOMComponent();
+    expect(<span class="keyword">this</span>._instance._renderedChildren).toBeFalsy();
+    <span class="keyword">return</span> <span class="keyword">this</span>;
+  },
+
+  <span class="comment">// Matchers ------------------------------------------------------------------</span>
+
+  toBeComponentOfType: <span class="function"><span class="keyword">function</span> <span class="params">(constructor)</span> {</span>
+    expect(<span class="keyword">this</span>._instance._currentElement.type === constructor).toBe(<span class="literal">true</span>);
+    <span class="keyword">return</span> <span class="keyword">this</span>;
+  },
+
+  <span class="comment">/**
+   * A component that is created with React.createClass. Just duck typing
+   * here.
+   */</span>
+  toBeCompositeComponent: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    expect(<span class="keyword">typeof</span> <span class="keyword">this</span>.instance() === <span class="string">'object'</span> &amp;&amp; <span class="keyword">typeof</span> <span class="keyword">this</span>.instance().render === <span class="string">'function'</span>).toBe(<span class="literal">true</span>);
+    <span class="keyword">return</span> <span class="keyword">this</span>;
+  },
+
+  toBeCompositeComponentWithType: <span class="function"><span class="keyword">function</span> <span class="params">(constructor)</span> {</span>
+    <span class="keyword">this</span>.toBeCompositeComponent();
+    expect(<span class="keyword">this</span>._instance._currentElement.type === constructor).toBe(<span class="literal">true</span>);
+    <span class="keyword">return</span> <span class="keyword">this</span>;
+  },
+
+  toBeTextComponentWithValue: <span class="function"><span class="keyword">function</span> <span class="params">(val)</span> {</span>
+    <span class="keyword">var</span> elementType = <span class="keyword">typeof</span> <span class="keyword">this</span>._instance._currentElement;
+    expect(elementType === <span class="string">'string'</span> || elementType === <span class="string">'number'</span>).toBe(<span class="literal">true</span>);
+    expect(<span class="keyword">this</span>._instance._stringText).toBe(val);
+    <span class="keyword">return</span> <span class="keyword">this</span>;
+  },
+
+  toBeEmptyComponent: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">var</span> element = <span class="keyword">this</span>._instance._currentElement;
+    <span class="keyword">return</span> element === <span class="literal">null</span> || element === <span class="literal">false</span>;
+  },
+
+  toBePresent: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    expect(<span class="keyword">this</span>.instance()).toBeTruthy();
+    <span class="keyword">return</span> <span class="keyword">this</span>;
+  },
+
+  <span class="comment">/**
+   * A terminal type of component representing some virtual dom node. Just duck
+   * typing here.
+   */</span>
+  toBeDOMComponent: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    expect(ReactTestUtils.isDOMComponent(<span class="keyword">this</span>.instance())).toBe(<span class="literal">true</span>);
+    <span class="keyword">return</span> <span class="keyword">this</span>;
+  },
+
+  <span class="comment">/**
+   * @deprecated
+   * @see toBeComponentOfType
+   */</span>
+  toBeDOMComponentWithTag: <span class="function"><span class="keyword">function</span> <span class="params">(tag)</span> {</span>
+    <span class="keyword">this</span>.toBeDOMComponent();
+    expect(<span class="keyword">this</span>.instance().tagName).toBe(tag.toUpperCase());
+    <span class="keyword">return</span> <span class="keyword">this</span>;
+  },
+
+  <span class="comment">/**
+   * Check that internal state values are equal to a state of expected values.
+   */</span>
+  scalarStateEqual: <span class="function"><span class="keyword">function</span> <span class="params">(stateNameToExpectedValue)</span> {</span>
+    expect(<span class="keyword">this</span>.instance()).toBeTruthy();
+    <span class="keyword">for</span> (<span class="keyword">var</span> stateName <span class="keyword">in</span> stateNameToExpectedValue) {
+      <span class="keyword">if</span> (!stateNameToExpectedValue.hasOwnProperty(stateName)) {
+        <span class="keyword">continue</span>;
+      }
+      expect(<span class="keyword">this</span>.instance().state[stateName]).toEqual(stateNameToExpectedValue[stateName]);
+    }
+    <span class="keyword">return</span> <span class="keyword">this</span>;
+  },
+
+  <span class="comment">/**
+   * Check a set of props are equal to a set of expected values - only works
+   * with scalars.
+   */</span>
+  scalarPropsEqual: <span class="function"><span class="keyword">function</span> <span class="params">(propNameToExpectedValue)</span> {</span>
+    expect(<span class="keyword">this</span>.instance()).toBeTruthy();
+    <span class="keyword">for</span> (<span class="keyword">var</span> propName <span class="keyword">in</span> propNameToExpectedValue) {
+      <span class="keyword">if</span> (!propNameToExpectedValue.hasOwnProperty(propName)) {
+        <span class="keyword">continue</span>;
+      }
+      expect(<span class="keyword">this</span>.instance().props[propName]).toEqual(propNameToExpectedValue[propName]);
+    }
+    <span class="keyword">return</span> <span class="keyword">this</span>;
+  },
+
+  <span class="comment">/**
+   * Check a set of props are equal to a set of expected values - only works
+   * with scalars.
+   */</span>
+  scalarContextEqual: <span class="function"><span class="keyword">function</span> <span class="params">(contextNameToExpectedValue)</span> {</span>
+    expect(<span class="keyword">this</span>.instance()).toBeTruthy();
+    <span class="keyword">for</span> (<span class="keyword">var</span> contextName <span class="keyword">in</span> contextNameToExpectedValue) {
+      <span class="keyword">if</span> (!contextNameToExpectedValue.hasOwnProperty(contextName)) {
+        <span class="keyword">continue</span>;
+      }
+      expect(<span class="keyword">this</span>.instance().context[contextName]).toEqual(contextNameToExpectedValue[contextName]);
+    }
+    <span class="keyword">return</span> <span class="keyword">this</span>;
+  }
+});
+
+module.exports = reactComponentExpect;</code></pre>

@@ -1,0 +1,228 @@
+<h1>EventPluginUtils.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule EventPluginUtils
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> EventConstants = require(<span class="string">'./EventConstants'</span>);
+<span class="keyword">var</span> ReactErrorUtils = require(<span class="string">'./ReactErrorUtils'</span>);
+
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="comment">/**
+ * Injected dependencies:
+ */</span>
+
+<span class="comment">/**
+ * - `ComponentTree`: [required] Module that can convert between React instances
+ *   and actual node references.
+ */</span>
+<span class="keyword">var</span> ComponentTree;
+<span class="keyword">var</span> TreeTraversal;
+<span class="keyword">var</span> injection = {
+  injectComponentTree: <span class="function"><span class="keyword">function</span> <span class="params">(Injected)</span> {</span>
+    ComponentTree = Injected;
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(Injected &amp;&amp; Injected.getNodeFromInstance &amp;&amp; Injected.getInstanceFromNode, <span class="string">'EventPluginUtils.injection.injectComponentTree(...): Injected '</span> + <span class="string">'module is missing getNodeFromInstance or getInstanceFromNode.'</span>) : <span class="literal">undefined</span>;
+    }
+  },
+  injectTreeTraversal: <span class="function"><span class="keyword">function</span> <span class="params">(Injected)</span> {</span>
+    TreeTraversal = Injected;
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(Injected &amp;&amp; Injected.isAncestor &amp;&amp; Injected.getLowestCommonAncestor, <span class="string">'EventPluginUtils.injection.injectTreeTraversal(...): Injected '</span> + <span class="string">'module is missing isAncestor or getLowestCommonAncestor.'</span>) : <span class="literal">undefined</span>;
+    }
+  }
+};
+
+<span class="keyword">var</span> topLevelTypes = EventConstants.topLevelTypes;
+
+<span class="function"><span class="keyword">function</span> <span class="title">isEndish</span><span class="params">(topLevelType)</span> {</span>
+  <span class="keyword">return</span> topLevelType === topLevelTypes.topMouseUp || topLevelType === topLevelTypes.topTouchEnd || topLevelType === topLevelTypes.topTouchCancel;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">isMoveish</span><span class="params">(topLevelType)</span> {</span>
+  <span class="keyword">return</span> topLevelType === topLevelTypes.topMouseMove || topLevelType === topLevelTypes.topTouchMove;
+}
+<span class="function"><span class="keyword">function</span> <span class="title">isStartish</span><span class="params">(topLevelType)</span> {</span>
+  <span class="keyword">return</span> topLevelType === topLevelTypes.topMouseDown || topLevelType === topLevelTypes.topTouchStart;
+}
+
+<span class="keyword">var</span> validateEventDispatches;
+<span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+  validateEventDispatches = <span class="function"><span class="keyword">function</span> <span class="params">(event)</span> {</span>
+    <span class="keyword">var</span> dispatchListeners = event._dispatchListeners;
+    <span class="keyword">var</span> dispatchInstances = event._dispatchInstances;
+
+    <span class="keyword">var</span> listenersIsArr = Array.isArray(dispatchListeners);
+    <span class="keyword">var</span> listenersLen = listenersIsArr ? dispatchListeners.length : dispatchListeners ? <span class="number">1</span> : <span class="number">0</span>;
+
+    <span class="keyword">var</span> instancesIsArr = Array.isArray(dispatchInstances);
+    <span class="keyword">var</span> instancesLen = instancesIsArr ? dispatchInstances.length : dispatchInstances ? <span class="number">1</span> : <span class="number">0</span>;
+
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(instancesIsArr === listenersIsArr &amp;&amp; instancesLen === listenersLen, <span class="string">'EventPluginUtils: Invalid `event`.'</span>) : <span class="literal">undefined</span>;
+  };
+}
+
+<span class="comment">/**
+ * Dispatch the event to the listener.
+ * @param {SyntheticEvent} event SyntheticEvent to handle
+ * @param {boolean} simulated If the event is simulated (changes exn behavior)
+ * @param {function} listener Application-level callback
+ * @param {*} inst Internal component instance
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">executeDispatch</span><span class="params">(event, simulated, listener, inst)</span> {</span>
+  <span class="keyword">var</span> type = event.type || <span class="string">'unknown-event'</span>;
+  event.currentTarget = EventPluginUtils.getNodeFromInstance(inst);
+  <span class="keyword">if</span> (simulated) {
+    ReactErrorUtils.invokeGuardedCallbackWithCatch(type, listener, event);
+  } <span class="keyword">else</span> {
+    ReactErrorUtils.invokeGuardedCallback(type, listener, event);
+  }
+  event.currentTarget = <span class="literal">null</span>;
+}
+
+<span class="comment">/**
+ * Standard/simple iteration through an event's collected dispatches.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">executeDispatchesInOrder</span><span class="params">(event, simulated)</span> {</span>
+  <span class="keyword">var</span> dispatchListeners = event._dispatchListeners;
+  <span class="keyword">var</span> dispatchInstances = event._dispatchInstances;
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    validateEventDispatches(event);
+  }
+  <span class="keyword">if</span> (Array.isArray(dispatchListeners)) {
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; dispatchListeners.length; i++) {
+      <span class="keyword">if</span> (event.isPropagationStopped()) {
+        <span class="keyword">break</span>;
+      }
+      <span class="comment">// Listeners and Instances are two parallel arrays that are always in sync.</span>
+      executeDispatch(event, simulated, dispatchListeners[i], dispatchInstances[i]);
+    }
+  } <span class="keyword">else</span> <span class="keyword">if</span> (dispatchListeners) {
+    executeDispatch(event, simulated, dispatchListeners, dispatchInstances);
+  }
+  event._dispatchListeners = <span class="literal">null</span>;
+  event._dispatchInstances = <span class="literal">null</span>;
+}
+
+<span class="comment">/**
+ * Standard/simple iteration through an event's collected dispatches, but stops
+ * at the first dispatch execution returning true, and returns that id.
+ *
+ * @return {?string} id of the first dispatch execution who's listener returns
+ * true, or null if no listener returned true.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">executeDispatchesInOrderStopAtTrueImpl</span><span class="params">(event)</span> {</span>
+  <span class="keyword">var</span> dispatchListeners = event._dispatchListeners;
+  <span class="keyword">var</span> dispatchInstances = event._dispatchInstances;
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    validateEventDispatches(event);
+  }
+  <span class="keyword">if</span> (Array.isArray(dispatchListeners)) {
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; dispatchListeners.length; i++) {
+      <span class="keyword">if</span> (event.isPropagationStopped()) {
+        <span class="keyword">break</span>;
+      }
+      <span class="comment">// Listeners and Instances are two parallel arrays that are always in sync.</span>
+      <span class="keyword">if</span> (dispatchListeners[i](event, dispatchInstances[i])) {
+        <span class="keyword">return</span> dispatchInstances[i];
+      }
+    }
+  } <span class="keyword">else</span> <span class="keyword">if</span> (dispatchListeners) {
+    <span class="keyword">if</span> (dispatchListeners(event, dispatchInstances)) {
+      <span class="keyword">return</span> dispatchInstances;
+    }
+  }
+  <span class="keyword">return</span> <span class="literal">null</span>;
+}
+
+<span class="comment">/**
+ * @see executeDispatchesInOrderStopAtTrueImpl
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">executeDispatchesInOrderStopAtTrue</span><span class="params">(event)</span> {</span>
+  <span class="keyword">var</span> ret = executeDispatchesInOrderStopAtTrueImpl(event);
+  event._dispatchInstances = <span class="literal">null</span>;
+  event._dispatchListeners = <span class="literal">null</span>;
+  <span class="keyword">return</span> ret;
+}
+
+<span class="comment">/**
+ * Execution of a "direct" dispatch - there must be at most one dispatch
+ * accumulated on the event or it is considered an error. It doesn't really make
+ * sense for an event with multiple dispatches (bubbled) to keep track of the
+ * return values at each dispatch execution, but it does tend to make sense when
+ * dealing with "direct" dispatches.
+ *
+ * @return {*} The return value of executing the single dispatch.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">executeDirectDispatch</span><span class="params">(event)</span> {</span>
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    validateEventDispatches(event);
+  }
+  <span class="keyword">var</span> dispatchListener = event._dispatchListeners;
+  <span class="keyword">var</span> dispatchInstance = event._dispatchInstances;
+  !!Array.isArray(dispatchListener) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'executeDirectDispatch(...): Invalid `event`.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  event.currentTarget = EventPluginUtils.getNodeFromInstance(dispatchInstance);
+  <span class="keyword">var</span> res = dispatchListener ? dispatchListener(event) : <span class="literal">null</span>;
+  event.curentTarget = <span class="literal">null</span>;
+  event._dispatchListeners = <span class="literal">null</span>;
+  event._dispatchInstances = <span class="literal">null</span>;
+  <span class="keyword">return</span> res;
+}
+
+<span class="comment">/**
+ * @param {SyntheticEvent} event
+ * @return {boolean} True iff number of dispatches accumulated is greater than 0.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">hasDispatches</span><span class="params">(event)</span> {</span>
+  <span class="keyword">return</span> !!event._dispatchListeners;
+}
+
+<span class="comment">/**
+ * General utilities that are useful in creating custom Event Plugins.
+ */</span>
+<span class="keyword">var</span> EventPluginUtils = {
+  isEndish: isEndish,
+  isMoveish: isMoveish,
+  isStartish: isStartish,
+
+  executeDirectDispatch: executeDirectDispatch,
+  executeDispatchesInOrder: executeDispatchesInOrder,
+  executeDispatchesInOrderStopAtTrue: executeDispatchesInOrderStopAtTrue,
+  hasDispatches: hasDispatches,
+
+  getInstanceFromNode: <span class="function"><span class="keyword">function</span> <span class="params">(node)</span> {</span>
+    <span class="keyword">return</span> ComponentTree.getInstanceFromNode(node);
+  },
+  getNodeFromInstance: <span class="function"><span class="keyword">function</span> <span class="params">(node)</span> {</span>
+    <span class="keyword">return</span> ComponentTree.getNodeFromInstance(node);
+  },
+  isAncestor: <span class="function"><span class="keyword">function</span> <span class="params">(a, b)</span> {</span>
+    <span class="keyword">return</span> TreeTraversal.isAncestor(a, b);
+  },
+  getLowestCommonAncestor: <span class="function"><span class="keyword">function</span> <span class="params">(a, b)</span> {</span>
+    <span class="keyword">return</span> TreeTraversal.getLowestCommonAncestor(a, b);
+  },
+  getParentInstance: <span class="function"><span class="keyword">function</span> <span class="params">(inst)</span> {</span>
+    <span class="keyword">return</span> TreeTraversal.getParentInstance(inst);
+  },
+  traverseTwoPhase: <span class="function"><span class="keyword">function</span> <span class="params">(target, fn, arg)</span> {</span>
+    <span class="keyword">return</span> TreeTraversal.traverseTwoPhase(target, fn, arg);
+  },
+  traverseEnterLeave: <span class="function"><span class="keyword">function</span> <span class="params">(from, to, fn, argFrom, argTo)</span> {</span>
+    <span class="keyword">return</span> TreeTraversal.traverseEnterLeave(from, to, fn, argFrom, argTo);
+  },
+
+  injection: injection
+};
+
+module.exports = EventPluginUtils;</code></pre>

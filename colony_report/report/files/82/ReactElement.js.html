@@ -1,0 +1,250 @@
+<h1>ReactElement.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2014-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactElement
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactCurrentOwner = require(<span class="string">'./ReactCurrentOwner'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> canDefineProperty = require(<span class="string">'./canDefineProperty'</span>);
+
+<span class="comment">// The Symbol used to tag the ReactElement type. If there is no native Symbol</span>
+<span class="comment">// nor polyfill, then a plain number is used for performance.</span>
+<span class="keyword">var</span> REACT_ELEMENT_TYPE = <span class="keyword">typeof</span> Symbol === <span class="string">'function'</span> &amp;&amp; Symbol[<span class="string">'for'</span>] &amp;&amp; Symbol[<span class="string">'for'</span>](<span class="string">'react.element'</span>) || <span class="number">0xeac7</span>;
+
+<span class="keyword">var</span> RESERVED_PROPS = {
+  key: <span class="literal">true</span>,
+  ref: <span class="literal">true</span>,
+  __self: <span class="literal">true</span>,
+  __source: <span class="literal">true</span>
+};
+
+<span class="comment">/**
+ * Base constructor for all React elements. This is only used to make this
+ * work with a dynamic instanceof check. Nothing should live on this prototype.
+ *
+ * @param {*} type
+ * @param {*} key
+ * @param {string|object} ref
+ * @param {*} self A *temporary* helper to detect places where `this` is
+ * different from the `owner` when React.createElement is called, so that we
+ * can warn. We want to get rid of owner and replace string `ref`s with arrow
+ * functions, and as long as `this` and owner are the same, there will be no
+ * change in behavior.
+ * @param {*} source An annotation object (added by a transpiler or otherwise)
+ * indicating filename, line number, and/or other information.
+ * @param {*} owner
+ * @param {*} props
+ * @internal
+ */</span>
+<span class="keyword">var</span> ReactElement = <span class="function"><span class="keyword">function</span> <span class="params">(type, key, ref, self, source, owner, props)</span> {</span>
+  <span class="keyword">var</span> element = {
+    <span class="comment">// This tag allow us to uniquely identify this as a React Element</span>
+    $$<span class="keyword">typeof</span>: REACT_ELEMENT_TYPE,
+
+    <span class="comment">// Built-in properties that belong on the element</span>
+    type: type,
+    key: key,
+    ref: ref,
+    props: props,
+
+    <span class="comment">// Record the component responsible for creating this element.</span>
+    _owner: owner
+  };
+
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    <span class="comment">// The validation flag is currently mutative. We put it on</span>
+    <span class="comment">// an external backing store so that we can freeze the whole object.</span>
+    <span class="comment">// This can be replaced with a WeakMap once they are implemented in</span>
+    <span class="comment">// commonly used development environments.</span>
+    element._store = {};
+
+    <span class="comment">// To make comparing ReactElements easier for testing purposes, we make</span>
+    <span class="comment">// the validation flag non-enumerable (where possible, which should</span>
+    <span class="comment">// include every environment we run tests in), so the test framework</span>
+    <span class="comment">// ignores it.</span>
+    <span class="keyword">if</span> (canDefineProperty) {
+      Object.defineProperty(element._store, <span class="string">'validated'</span>, {
+        configurable: <span class="literal">false</span>,
+        enumerable: <span class="literal">false</span>,
+        writable: <span class="literal">true</span>,
+        value: <span class="literal">false</span>
+      });
+      <span class="comment">// self and source are DEV only properties.</span>
+      Object.defineProperty(element, <span class="string">'_self'</span>, {
+        configurable: <span class="literal">false</span>,
+        enumerable: <span class="literal">false</span>,
+        writable: <span class="literal">false</span>,
+        value: self
+      });
+      <span class="comment">// Two elements created in two different places should be considered</span>
+      <span class="comment">// equal for testing purposes and therefore we hide it from enumeration.</span>
+      Object.defineProperty(element, <span class="string">'_source'</span>, {
+        configurable: <span class="literal">false</span>,
+        enumerable: <span class="literal">false</span>,
+        writable: <span class="literal">false</span>,
+        value: source
+      });
+    } <span class="keyword">else</span> {
+      element._store.validated = <span class="literal">false</span>;
+      element._self = self;
+      element._source = source;
+    }
+    <span class="keyword">if</span> (Object.freeze) {
+      Object.freeze(element.props);
+      Object.freeze(element);
+    }
+  }
+
+  <span class="keyword">return</span> element;
+};
+
+ReactElement.createElement = <span class="function"><span class="keyword">function</span> <span class="params">(type, config, children)</span> {</span>
+  <span class="keyword">var</span> propName;
+
+  <span class="comment">// Reserved names are extracted</span>
+  <span class="keyword">var</span> props = {};
+
+  <span class="keyword">var</span> key = <span class="literal">null</span>;
+  <span class="keyword">var</span> ref = <span class="literal">null</span>;
+  <span class="keyword">var</span> self = <span class="literal">null</span>;
+  <span class="keyword">var</span> source = <span class="literal">null</span>;
+
+  <span class="keyword">if</span> (config != <span class="literal">null</span>) {
+    ref = config.ref === <span class="literal">undefined</span> ? <span class="literal">null</span> : config.ref;
+    key = config.key === <span class="literal">undefined</span> ? <span class="literal">null</span> : <span class="string">''</span> + config.key;
+    self = config.__self === <span class="literal">undefined</span> ? <span class="literal">null</span> : config.__self;
+    source = config.__source === <span class="literal">undefined</span> ? <span class="literal">null</span> : config.__source;
+    <span class="comment">// Remaining properties are added to a new props object</span>
+    <span class="keyword">for</span> (propName <span class="keyword">in</span> config) {
+      <span class="keyword">if</span> (config.hasOwnProperty(propName) &amp;&amp; !RESERVED_PROPS.hasOwnProperty(propName)) {
+        props[propName] = config[propName];
+      }
+    }
+  }
+
+  <span class="comment">// Children can be more than one argument, and those are transferred onto</span>
+  <span class="comment">// the newly allocated props object.</span>
+  <span class="keyword">var</span> childrenLength = arguments.length - <span class="number">2</span>;
+  <span class="keyword">if</span> (childrenLength === <span class="number">1</span>) {
+    props.children = children;
+  } <span class="keyword">else</span> <span class="keyword">if</span> (childrenLength > <span class="number">1</span>) {
+    <span class="keyword">var</span> childArray = Array(childrenLength);
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; childrenLength; i++) {
+      childArray[i] = arguments[i + <span class="number">2</span>];
+    }
+    props.children = childArray;
+  }
+
+  <span class="comment">// Resolve default props</span>
+  <span class="keyword">if</span> (type &amp;&amp; type.defaultProps) {
+    <span class="keyword">var</span> defaultProps = type.defaultProps;
+    <span class="keyword">for</span> (propName <span class="keyword">in</span> defaultProps) {
+      <span class="keyword">if</span> (<span class="keyword">typeof</span> props[propName] === <span class="string">'undefined'</span>) {
+        props[propName] = defaultProps[propName];
+      }
+    }
+  }
+
+  <span class="keyword">return</span> ReactElement(type, key, ref, self, source, ReactCurrentOwner.current, props);
+};
+
+ReactElement.createFactory = <span class="function"><span class="keyword">function</span> <span class="params">(type)</span> {</span>
+  <span class="keyword">var</span> factory = ReactElement.createElement.bind(<span class="literal">null</span>, type);
+  <span class="comment">// Expose the type on the factory and the prototype so that it can be</span>
+  <span class="comment">// easily accessed on elements. E.g. `&lt;Foo />.type === Foo`.</span>
+  <span class="comment">// This should not be named `constructor` since this may not be the function</span>
+  <span class="comment">// that created the element, and it may not even be a constructor.</span>
+  <span class="comment">// Legacy hook TODO: Warn if this is accessed</span>
+  factory.type = type;
+  <span class="keyword">return</span> factory;
+};
+
+ReactElement.cloneAndReplaceKey = <span class="function"><span class="keyword">function</span> <span class="params">(oldElement, newKey)</span> {</span>
+  <span class="keyword">var</span> newElement = ReactElement(oldElement.type, newKey, oldElement.ref, oldElement._self, oldElement._source, oldElement._owner, oldElement.props);
+
+  <span class="keyword">return</span> newElement;
+};
+
+ReactElement.cloneAndReplaceProps = <span class="function"><span class="keyword">function</span> <span class="params">(oldElement, newProps)</span> {</span>
+  <span class="keyword">var</span> newElement = ReactElement(oldElement.type, oldElement.key, oldElement.ref, oldElement._self, oldElement._source, oldElement._owner, newProps);
+
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    <span class="comment">// If the key on the original is valid, then the clone is valid</span>
+    newElement._store.validated = oldElement._store.validated;
+  }
+
+  <span class="keyword">return</span> newElement;
+};
+
+ReactElement.cloneElement = <span class="function"><span class="keyword">function</span> <span class="params">(element, config, children)</span> {</span>
+  <span class="keyword">var</span> propName;
+
+  <span class="comment">// Original props are copied</span>
+  <span class="keyword">var</span> props = assign({}, element.props);
+
+  <span class="comment">// Reserved names are extracted</span>
+  <span class="keyword">var</span> key = element.key;
+  <span class="keyword">var</span> ref = element.ref;
+  <span class="comment">// Self is preserved since the owner is preserved.</span>
+  <span class="keyword">var</span> self = element._self;
+  <span class="comment">// Source is preserved since cloneElement is unlikely to be targeted by a</span>
+  <span class="comment">// transpiler, and the original source is probably a better indicator of the</span>
+  <span class="comment">// true owner.</span>
+  <span class="keyword">var</span> source = element._source;
+
+  <span class="comment">// Owner will be preserved, unless ref is overridden</span>
+  <span class="keyword">var</span> owner = element._owner;
+
+  <span class="keyword">if</span> (config != <span class="literal">null</span>) {
+    <span class="keyword">if</span> (config.ref !== <span class="literal">undefined</span>) {
+      <span class="comment">// Silently steal the ref from the parent.</span>
+      ref = config.ref;
+      owner = ReactCurrentOwner.current;
+    }
+    <span class="keyword">if</span> (config.key !== <span class="literal">undefined</span>) {
+      key = <span class="string">''</span> + config.key;
+    }
+    <span class="comment">// Remaining properties override existing props</span>
+    <span class="keyword">for</span> (propName <span class="keyword">in</span> config) {
+      <span class="keyword">if</span> (config.hasOwnProperty(propName) &amp;&amp; !RESERVED_PROPS.hasOwnProperty(propName)) {
+        props[propName] = config[propName];
+      }
+    }
+  }
+
+  <span class="comment">// Children can be more than one argument, and those are transferred onto</span>
+  <span class="comment">// the newly allocated props object.</span>
+  <span class="keyword">var</span> childrenLength = arguments.length - <span class="number">2</span>;
+  <span class="keyword">if</span> (childrenLength === <span class="number">1</span>) {
+    props.children = children;
+  } <span class="keyword">else</span> <span class="keyword">if</span> (childrenLength > <span class="number">1</span>) {
+    <span class="keyword">var</span> childArray = Array(childrenLength);
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; childrenLength; i++) {
+      childArray[i] = arguments[i + <span class="number">2</span>];
+    }
+    props.children = childArray;
+  }
+
+  <span class="keyword">return</span> ReactElement(element.type, key, ref, self, source, owner, props);
+};
+
+<span class="comment">/**
+ * @param {?object} object
+ * @return {boolean} True if `object` is a valid component.
+ * @final
+ */</span>
+ReactElement.isValidElement = <span class="function"><span class="keyword">function</span> <span class="params">(object)</span> {</span>
+  <span class="keyword">return</span> <span class="keyword">typeof</span> object === <span class="string">'object'</span> &amp;&amp; object !== <span class="literal">null</span> &amp;&amp; object.$$<span class="keyword">typeof</span> === REACT_ELEMENT_TYPE;
+};
+
+module.exports = ReactElement;</code></pre>

@@ -1,0 +1,108 @@
+<h1>update.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule update
+ */</span>
+
+<span class="comment">/* global hasOwnProperty:true */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> keyOf = require(<span class="string">'fbjs/lib/keyOf'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+<span class="keyword">var</span> hasOwnProperty = ({}).hasOwnProperty;
+
+<span class="function"><span class="keyword">function</span> <span class="title">shallowCopy</span><span class="params">(x)</span> {</span>
+  <span class="keyword">if</span> (Array.isArray(x)) {
+    <span class="keyword">return</span> x.concat();
+  } <span class="keyword">else</span> <span class="keyword">if</span> (x &amp;&amp; <span class="keyword">typeof</span> x === <span class="string">'object'</span>) {
+    <span class="keyword">return</span> assign(<span class="keyword">new</span> x.constructor(), x);
+  } <span class="keyword">else</span> {
+    <span class="keyword">return</span> x;
+  }
+}
+
+<span class="keyword">var</span> COMMAND_PUSH = keyOf({ $push: <span class="literal">null</span> });
+<span class="keyword">var</span> COMMAND_UNSHIFT = keyOf({ $unshift: <span class="literal">null</span> });
+<span class="keyword">var</span> COMMAND_SPLICE = keyOf({ $splice: <span class="literal">null</span> });
+<span class="keyword">var</span> COMMAND_SET = keyOf({ $set: <span class="literal">null</span> });
+<span class="keyword">var</span> COMMAND_MERGE = keyOf({ $merge: <span class="literal">null</span> });
+<span class="keyword">var</span> COMMAND_APPLY = keyOf({ $apply: <span class="literal">null</span> });
+
+<span class="keyword">var</span> ALL_COMMANDS_LIST = [COMMAND_PUSH, COMMAND_UNSHIFT, COMMAND_SPLICE, COMMAND_SET, COMMAND_MERGE, COMMAND_APPLY];
+
+<span class="keyword">var</span> ALL_COMMANDS_SET = {};
+
+ALL_COMMANDS_LIST.forEach(<span class="function"><span class="keyword">function</span> <span class="params">(command)</span> {</span>
+  ALL_COMMANDS_SET[command] = <span class="literal">true</span>;
+});
+
+<span class="function"><span class="keyword">function</span> <span class="title">invariantArrayCase</span><span class="params">(value, spec, command)</span> {</span>
+  !Array.isArray(value) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'update(): expected target of %s to be an array; got %s.'</span>, command, value) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  <span class="keyword">var</span> specValue = spec[command];
+  !Array.isArray(specValue) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'update(): expected spec of %s to be an array; got %s. '</span> + <span class="string">'Did you forget to wrap your parameter in an array?'</span>, command, specValue) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">update</span><span class="params">(value, spec)</span> {</span>
+  !(<span class="keyword">typeof</span> spec === <span class="string">'object'</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'update(): You provided a key path to update() that did not contain one '</span> + <span class="string">'of %s. Did you forget to include {%s: ...}?'</span>, ALL_COMMANDS_LIST.join(<span class="string">', '</span>), COMMAND_SET) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+  <span class="keyword">if</span> (hasOwnProperty.call(spec, COMMAND_SET)) {
+    !(Object.keys(spec).length === <span class="number">1</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Cannot have more than one key in an object with %s'</span>, COMMAND_SET) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+    <span class="keyword">return</span> spec[COMMAND_SET];
+  }
+
+  <span class="keyword">var</span> nextValue = shallowCopy(value);
+
+  <span class="keyword">if</span> (hasOwnProperty.call(spec, COMMAND_MERGE)) {
+    <span class="keyword">var</span> mergeObj = spec[COMMAND_MERGE];
+    !(mergeObj &amp;&amp; <span class="keyword">typeof</span> mergeObj === <span class="string">'object'</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'update(): %s expects a spec of type \'object\'; got %s'</span>, COMMAND_MERGE, mergeObj) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    !(nextValue &amp;&amp; <span class="keyword">typeof</span> nextValue === <span class="string">'object'</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'update(): %s expects a target of type \'object\'; got %s'</span>, COMMAND_MERGE, nextValue) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    assign(nextValue, spec[COMMAND_MERGE]);
+  }
+
+  <span class="keyword">if</span> (hasOwnProperty.call(spec, COMMAND_PUSH)) {
+    invariantArrayCase(value, spec, COMMAND_PUSH);
+    spec[COMMAND_PUSH].forEach(<span class="function"><span class="keyword">function</span> <span class="params">(item)</span> {</span>
+      nextValue.push(item);
+    });
+  }
+
+  <span class="keyword">if</span> (hasOwnProperty.call(spec, COMMAND_UNSHIFT)) {
+    invariantArrayCase(value, spec, COMMAND_UNSHIFT);
+    spec[COMMAND_UNSHIFT].forEach(<span class="function"><span class="keyword">function</span> <span class="params">(item)</span> {</span>
+      nextValue.unshift(item);
+    });
+  }
+
+  <span class="keyword">if</span> (hasOwnProperty.call(spec, COMMAND_SPLICE)) {
+    !Array.isArray(value) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Expected %s target to be an array; got %s'</span>, COMMAND_SPLICE, value) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    !Array.isArray(spec[COMMAND_SPLICE]) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'update(): expected spec of %s to be an array of arrays; got %s. '</span> + <span class="string">'Did you forget to wrap your parameters in an array?'</span>, COMMAND_SPLICE, spec[COMMAND_SPLICE]) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    spec[COMMAND_SPLICE].forEach(<span class="function"><span class="keyword">function</span> <span class="params">(args)</span> {</span>
+      !Array.isArray(args) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'update(): expected spec of %s to be an array of arrays; got %s. '</span> + <span class="string">'Did you forget to wrap your parameters in an array?'</span>, COMMAND_SPLICE, spec[COMMAND_SPLICE]) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+      nextValue.splice.apply(nextValue, args);
+    });
+  }
+
+  <span class="keyword">if</span> (hasOwnProperty.call(spec, COMMAND_APPLY)) {
+    !(<span class="keyword">typeof</span> spec[COMMAND_APPLY] === <span class="string">'function'</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'update(): expected spec of %s to be a function; got %s.'</span>, COMMAND_APPLY, spec[COMMAND_APPLY]) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    nextValue = spec[COMMAND_APPLY](nextValue);
+  }
+
+  <span class="keyword">for</span> (<span class="keyword">var</span> k <span class="keyword">in</span> spec) {
+    <span class="keyword">if</span> (!(ALL_COMMANDS_SET.hasOwnProperty(k) &amp;&amp; ALL_COMMANDS_SET[k])) {
+      nextValue[k] = update(value[k], spec[k]);
+    }
+  }
+
+  <span class="keyword">return</span> nextValue;
+}
+
+module.exports = update;</code></pre>

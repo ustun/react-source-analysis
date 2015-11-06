@@ -1,0 +1,236 @@
+<h1>DOMProperty.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule DOMProperty
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+
+<span class="function"><span class="keyword">function</span> <span class="title">checkMask</span><span class="params">(value, bitmask)</span> {</span>
+  <span class="keyword">return</span> (value &amp; bitmask) === bitmask;
+}
+
+<span class="keyword">var</span> DOMPropertyInjection = {
+  <span class="comment">/**
+   * Mapping from normalized, camelcased property names to a configuration that
+   * specifies how the associated DOM property should be accessed or rendered.
+   */</span>
+  MUST_USE_ATTRIBUTE: <span class="number">0x1</span>,
+  MUST_USE_PROPERTY: <span class="number">0x2</span>,
+  HAS_SIDE_EFFECTS: <span class="number">0x4</span>,
+  HAS_BOOLEAN_VALUE: <span class="number">0x8</span>,
+  HAS_NUMERIC_VALUE: <span class="number">0x10</span>,
+  HAS_POSITIVE_NUMERIC_VALUE: <span class="number">0x20</span> | <span class="number">0x10</span>,
+  HAS_OVERLOADED_BOOLEAN_VALUE: <span class="number">0x40</span>,
+
+  <span class="comment">/**
+   * Inject some specialized knowledge about the DOM. This takes a config object
+   * with the following properties:
+   *
+   * isCustomAttribute: function that given an attribute name will return true
+   * if it can be inserted into the DOM verbatim. Useful for data-* or aria-*
+   * attributes where it's impossible to enumerate all of the possible
+   * attribute names,
+   *
+   * Properties: object mapping DOM property name to one of the
+   * DOMPropertyInjection constants or null. If your attribute isn't in here,
+   * it won't get written to the DOM.
+   *
+   * DOMAttributeNames: object mapping React attribute name to the DOM
+   * attribute name. Attribute names not specified use the **lowercase**
+   * normalized name.
+   *
+   * DOMAttributeNamespaces: object mapping React attribute name to the DOM
+   * attribute namespace URL. (Attribute names not specified use no namespace.)
+   *
+   * DOMPropertyNames: similar to DOMAttributeNames but for DOM properties.
+   * Property names not specified use the normalized name.
+   *
+   * DOMMutationMethods: Properties that require special mutation methods. If
+   * `value` is undefined, the mutation method should unset the property.
+   *
+   * @param {object} domPropertyConfig the config as described above.
+   */</span>
+  injectDOMPropertyConfig: <span class="function"><span class="keyword">function</span> <span class="params">(domPropertyConfig)</span> {</span>
+    <span class="keyword">var</span> Injection = DOMPropertyInjection;
+    <span class="keyword">var</span> Properties = domPropertyConfig.Properties || {};
+    <span class="keyword">var</span> DOMAttributeNamespaces = domPropertyConfig.DOMAttributeNamespaces || {};
+    <span class="keyword">var</span> DOMAttributeNames = domPropertyConfig.DOMAttributeNames || {};
+    <span class="keyword">var</span> DOMPropertyNames = domPropertyConfig.DOMPropertyNames || {};
+    <span class="keyword">var</span> DOMMutationMethods = domPropertyConfig.DOMMutationMethods || {};
+
+    <span class="keyword">if</span> (domPropertyConfig.isCustomAttribute) {
+      DOMProperty._isCustomAttributeFunctions.push(domPropertyConfig.isCustomAttribute);
+    }
+
+    <span class="keyword">for</span> (<span class="keyword">var</span> propName <span class="keyword">in</span> Properties) {
+      !!DOMProperty.properties.hasOwnProperty(propName) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'injectDOMPropertyConfig(...): You\'re trying to inject DOM property '</span> + <span class="string">'\'%s\' which has already been injected. You may be accidentally '</span> + <span class="string">'injecting the same DOM property config twice, or you may be '</span> + <span class="string">'injecting two configs that have conflicting property names.'</span>, propName) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+      <span class="keyword">var</span> lowerCased = propName.toLowerCase();
+      <span class="keyword">var</span> propConfig = Properties[propName];
+
+      <span class="keyword">var</span> propertyInfo = {
+        attributeName: lowerCased,
+        attributeNamespace: <span class="literal">null</span>,
+        propertyName: propName,
+        mutationMethod: <span class="literal">null</span>,
+
+        mustUseAttribute: checkMask(propConfig, Injection.MUST_USE_ATTRIBUTE),
+        mustUseProperty: checkMask(propConfig, Injection.MUST_USE_PROPERTY),
+        hasSideEffects: checkMask(propConfig, Injection.HAS_SIDE_EFFECTS),
+        hasBooleanValue: checkMask(propConfig, Injection.HAS_BOOLEAN_VALUE),
+        hasNumericValue: checkMask(propConfig, Injection.HAS_NUMERIC_VALUE),
+        hasPositiveNumericValue: checkMask(propConfig, Injection.HAS_POSITIVE_NUMERIC_VALUE),
+        hasOverloadedBooleanValue: checkMask(propConfig, Injection.HAS_OVERLOADED_BOOLEAN_VALUE)
+      };
+
+      !(!propertyInfo.mustUseAttribute || !propertyInfo.mustUseProperty) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'DOMProperty: Cannot require using both attribute and property: %s'</span>, propName) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+      !(propertyInfo.mustUseProperty || !propertyInfo.hasSideEffects) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'DOMProperty: Properties that have side effects must use property: %s'</span>, propName) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+      !(propertyInfo.hasBooleanValue + propertyInfo.hasNumericValue + propertyInfo.hasOverloadedBooleanValue &lt;= <span class="number">1</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'DOMProperty: Value can be one of boolean, overloaded boolean, or '</span> + <span class="string">'numeric value, but not a combination: %s'</span>, propName) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+      <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+        DOMProperty.getPossibleStandardName[lowerCased] = propName;
+      }
+
+      <span class="keyword">if</span> (DOMAttributeNames.hasOwnProperty(propName)) {
+        <span class="keyword">var</span> attributeName = DOMAttributeNames[propName];
+        propertyInfo.attributeName = attributeName;
+        <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+          DOMProperty.getPossibleStandardName[attributeName] = propName;
+        }
+      }
+
+      <span class="keyword">if</span> (DOMAttributeNamespaces.hasOwnProperty(propName)) {
+        propertyInfo.attributeNamespace = DOMAttributeNamespaces[propName];
+      }
+
+      <span class="keyword">if</span> (DOMPropertyNames.hasOwnProperty(propName)) {
+        propertyInfo.propertyName = DOMPropertyNames[propName];
+      }
+
+      <span class="keyword">if</span> (DOMMutationMethods.hasOwnProperty(propName)) {
+        propertyInfo.mutationMethod = DOMMutationMethods[propName];
+      }
+
+      DOMProperty.properties[propName] = propertyInfo;
+    }
+  }
+};
+<span class="keyword">var</span> defaultValueCache = {};
+
+<span class="comment">/**
+ * DOMProperty exports lookup objects that can be used like functions:
+ *
+ *   > DOMProperty.isValid['id']
+ *   true
+ *   > DOMProperty.isValid['foobar']
+ *   undefined
+ *
+ * Although this may be confusing, it performs better in general.
+ *
+ * @see http://jsperf.com/key-exists
+ * @see http://jsperf.com/key-missing
+ */</span>
+<span class="keyword">var</span> DOMProperty = {
+
+  ID_ATTRIBUTE_NAME: <span class="string">'data-reactid'</span>,
+  ROOT_ATTRIBUTE_NAME: <span class="string">'data-reactroot'</span>,
+
+  <span class="comment">/**
+   * Map from property "standard name" to an object with info about how to set
+   * the property in the DOM. Each object contains:
+   *
+   * attributeName:
+   *   Used when rendering markup or with `*Attribute()`.
+   * attributeNamespace
+   * propertyName:
+   *   Used on DOM node instances. (This includes properties that mutate due to
+   *   external factors.)
+   * mutationMethod:
+   *   If non-null, used instead of the property or `setAttribute()` after
+   *   initial render.
+   * mustUseAttribute:
+   *   Whether the property must be accessed and mutated using `*Attribute()`.
+   *   (This includes anything that fails `&lt;propName> in &lt;element>`.)
+   * mustUseProperty:
+   *   Whether the property must be accessed and mutated as an object property.
+   * hasSideEffects:
+   *   Whether or not setting a value causes side effects such as triggering
+   *   resources to be loaded or text selection changes. If true, we read from
+   *   the DOM before updating to ensure that the value is only set if it has
+   *   changed.
+   * hasBooleanValue:
+   *   Whether the property should be removed when set to a falsey value.
+   * hasNumericValue:
+   *   Whether the property must be numeric or parse as a numeric and should be
+   *   removed when set to a falsey value.
+   * hasPositiveNumericValue:
+   *   Whether the property must be positive numeric or parse as a positive
+   *   numeric and should be removed when set to a falsey value.
+   * hasOverloadedBooleanValue:
+   *   Whether the property can be used as a flag as well as with a value.
+   *   Removed when strictly equal to false; present without a value when
+   *   strictly equal to true; present with a value otherwise.
+   */</span>
+  properties: {},
+
+  <span class="comment">/**
+   * Mapping from lowercase property names to the properly cased version, used
+   * to warn in the case of missing properties. Available only in __DEV__.
+   * @type {Object}
+   */</span>
+  getPossibleStandardName: process.env.NODE_ENV !== <span class="string">'production'</span> ? {} : <span class="literal">null</span>,
+
+  <span class="comment">/**
+   * All of the isCustomAttribute() functions that have been injected.
+   */</span>
+  _isCustomAttributeFunctions: [],
+
+  <span class="comment">/**
+   * Checks whether a property name is a custom attribute.
+   * @method
+   */</span>
+  isCustomAttribute: <span class="function"><span class="keyword">function</span> <span class="params">(attributeName)</span> {</span>
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; DOMProperty._isCustomAttributeFunctions.length; i++) {
+      <span class="keyword">var</span> isCustomAttributeFn = DOMProperty._isCustomAttributeFunctions[i];
+      <span class="keyword">if</span> (isCustomAttributeFn(attributeName)) {
+        <span class="keyword">return</span> <span class="literal">true</span>;
+      }
+    }
+    <span class="keyword">return</span> <span class="literal">false</span>;
+  },
+
+  <span class="comment">/**
+   * Returns the default property value for a DOM property (i.e., not an
+   * attribute). Most default values are '' or false, but not all. Worse yet,
+   * some (in particular, `type`) vary depending on the type of element.
+   *
+   * TODO: Is it better to grab all the possible properties when creating an
+   * element to avoid having to create the same element twice?
+   */</span>
+  getDefaultValueForProperty: <span class="function"><span class="keyword">function</span> <span class="params">(nodeName, prop)</span> {</span>
+    <span class="keyword">var</span> nodeDefaults = defaultValueCache[nodeName];
+    <span class="keyword">var</span> testElement;
+    <span class="keyword">if</span> (!nodeDefaults) {
+      defaultValueCache[nodeName] = nodeDefaults = {};
+    }
+    <span class="keyword">if</span> (!(prop <span class="keyword">in</span> nodeDefaults)) {
+      testElement = document.createElement(nodeName);
+      nodeDefaults[prop] = testElement[prop];
+    }
+    <span class="keyword">return</span> nodeDefaults[prop];
+  },
+
+  injection: DOMPropertyInjection
+};
+
+module.exports = DOMProperty;</code></pre>

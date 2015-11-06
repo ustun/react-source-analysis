@@ -1,0 +1,123 @@
+<h1>ReactComponent.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactComponent
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactNoopUpdateQueue = require(<span class="string">'./ReactNoopUpdateQueue'</span>);
+
+<span class="keyword">var</span> canDefineProperty = require(<span class="string">'./canDefineProperty'</span>);
+<span class="keyword">var</span> emptyObject = require(<span class="string">'fbjs/lib/emptyObject'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="comment">/**
+ * Base class helpers for the updating state of a component.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">ReactComponent</span><span class="params">(props, context, updater)</span> {</span>
+  <span class="keyword">this</span>.props = props;
+  <span class="keyword">this</span>.context = context;
+  <span class="keyword">this</span>.refs = emptyObject;
+  <span class="comment">// We initialize the default updater but the real one gets injected by the</span>
+  <span class="comment">// renderer.</span>
+  <span class="keyword">this</span>.updater = updater || ReactNoopUpdateQueue;
+}
+
+ReactComponent.prototype.isReactComponent = {};
+
+<span class="comment">/**
+ * Sets a subset of the state. Always use this to mutate
+ * state. You should treat `this.state` as immutable.
+ *
+ * There is no guarantee that `this.state` will be immediately updated, so
+ * accessing `this.state` after calling this method may return the old value.
+ *
+ * There is no guarantee that calls to `setState` will run synchronously,
+ * as they may eventually be batched together.  You can provide an optional
+ * callback that will be executed when the call to setState is actually
+ * completed.
+ *
+ * When a function is provided to setState, it will be called at some point in
+ * the future (not synchronously). It will be called with the up to date
+ * component arguments (state, props, context). These values can be different
+ * from this.* because your function may be called after receiveProps but before
+ * shouldComponentUpdate, and this new state, props, and context will not yet be
+ * assigned to this.
+ *
+ * @param {object|function} partialState Next partial state or function to
+ *        produce next partial state to be merged with current state.
+ * @param {?function} callback Called after state is updated.
+ * @final
+ * @protected
+ */</span>
+ReactComponent.prototype.setState = <span class="function"><span class="keyword">function</span> <span class="params">(partialState, callback)</span> {</span>
+  !(<span class="keyword">typeof</span> partialState === <span class="string">'object'</span> || <span class="keyword">typeof</span> partialState === <span class="string">'function'</span> || partialState == <span class="literal">null</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'setState(...): takes an object of state variables to update or a '</span> + <span class="string">'function which returns an object of state variables.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(partialState != <span class="literal">null</span>, <span class="string">'setState(...): You passed an undefined or null state object; '</span> + <span class="string">'instead, use forceUpdate().'</span>) : <span class="literal">undefined</span>;
+  }
+  <span class="keyword">this</span>.updater.enqueueSetState(<span class="keyword">this</span>, partialState);
+  <span class="keyword">if</span> (callback) {
+    <span class="keyword">this</span>.updater.enqueueCallback(<span class="keyword">this</span>, callback);
+  }
+};
+
+<span class="comment">/**
+ * Forces an update. This should only be invoked when it is known with
+ * certainty that we are **not** in a DOM transaction.
+ *
+ * You may want to call this when you know that some deeper aspect of the
+ * component's state has changed but `setState` was not called.
+ *
+ * This will not invoke `shouldComponentUpdate`, but it will invoke
+ * `componentWillUpdate` and `componentDidUpdate`.
+ *
+ * @param {?function} callback Called after update is complete.
+ * @final
+ * @protected
+ */</span>
+ReactComponent.prototype.forceUpdate = <span class="function"><span class="keyword">function</span> <span class="params">(callback)</span> {</span>
+  <span class="keyword">this</span>.updater.enqueueForceUpdate(<span class="keyword">this</span>);
+  <span class="keyword">if</span> (callback) {
+    <span class="keyword">this</span>.updater.enqueueCallback(<span class="keyword">this</span>, callback);
+  }
+};
+
+<span class="comment">/**
+ * Deprecated APIs. These APIs used to exist on classic React classes but since
+ * we would like to deprecate them, we're not going to move them over to this
+ * modern base class. Instead, we define a getter that warns if it's accessed.
+ */</span>
+<span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+  <span class="keyword">var</span> deprecatedAPIs = {
+    getDOMNode: [<span class="string">'getDOMNode'</span>, <span class="string">'Use ReactDOM.findDOMNode(component) instead.'</span>],
+    isMounted: [<span class="string">'isMounted'</span>, <span class="string">'Instead, make sure to clean up subscriptions and pending requests in '</span> + <span class="string">'componentWillUnmount to prevent memory leaks.'</span>],
+    replaceProps: [<span class="string">'replaceProps'</span>, <span class="string">'Instead, call render again at the top level.'</span>],
+    replaceState: [<span class="string">'replaceState'</span>, <span class="string">'Refactor your code to use setState instead (see '</span> + <span class="string">'https://github.com/facebook/react/issues/3236).'</span>],
+    setProps: [<span class="string">'setProps'</span>, <span class="string">'Instead, call render again at the top level.'</span>]
+  };
+  <span class="keyword">var</span> defineDeprecationWarning = <span class="function"><span class="keyword">function</span> <span class="params">(methodName, info)</span> {</span>
+    <span class="keyword">if</span> (canDefineProperty) {
+      Object.defineProperty(ReactComponent.prototype, methodName, {
+        get: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+          process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'%s(...) is deprecated in plain JavaScript React classes. %s'</span>, info[<span class="number">0</span>], info[<span class="number">1</span>]) : <span class="literal">undefined</span>;
+          <span class="keyword">return</span> <span class="literal">undefined</span>;
+        }
+      });
+    }
+  };
+  <span class="keyword">for</span> (<span class="keyword">var</span> fnName <span class="keyword">in</span> deprecatedAPIs) {
+    <span class="keyword">if</span> (deprecatedAPIs.hasOwnProperty(fnName)) {
+      defineDeprecationWarning(fnName, deprecatedAPIs[fnName]);
+    }
+  }
+}
+
+module.exports = ReactComponent;</code></pre>

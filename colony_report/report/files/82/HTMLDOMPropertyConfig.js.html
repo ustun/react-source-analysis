@@ -1,0 +1,229 @@
+<h1>HTMLDOMPropertyConfig.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule HTMLDOMPropertyConfig
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> DOMProperty = require(<span class="string">'./DOMProperty'</span>);
+<span class="keyword">var</span> ExecutionEnvironment = require(<span class="string">'fbjs/lib/ExecutionEnvironment'</span>);
+
+<span class="keyword">var</span> MUST_USE_ATTRIBUTE = DOMProperty.injection.MUST_USE_ATTRIBUTE;
+<span class="keyword">var</span> MUST_USE_PROPERTY = DOMProperty.injection.MUST_USE_PROPERTY;
+<span class="keyword">var</span> HAS_BOOLEAN_VALUE = DOMProperty.injection.HAS_BOOLEAN_VALUE;
+<span class="keyword">var</span> HAS_SIDE_EFFECTS = DOMProperty.injection.HAS_SIDE_EFFECTS;
+<span class="keyword">var</span> HAS_NUMERIC_VALUE = DOMProperty.injection.HAS_NUMERIC_VALUE;
+<span class="keyword">var</span> HAS_POSITIVE_NUMERIC_VALUE = DOMProperty.injection.HAS_POSITIVE_NUMERIC_VALUE;
+<span class="keyword">var</span> HAS_OVERLOADED_BOOLEAN_VALUE = DOMProperty.injection.HAS_OVERLOADED_BOOLEAN_VALUE;
+
+<span class="keyword">var</span> hasSVG;
+<span class="keyword">if</span> (ExecutionEnvironment.canUseDOM) {
+  <span class="keyword">var</span> implementation = document.implementation;
+  hasSVG = implementation &amp;&amp; implementation.hasFeature &amp;&amp; implementation.hasFeature(<span class="string">'http://www.w3.org/TR/SVG11/feature#BasicStructure'</span>, <span class="string">'1.1'</span>);
+}
+
+<span class="keyword">var</span> HTMLDOMPropertyConfig = {
+  isCustomAttribute: RegExp.prototype.test.bind(<span class="regexp">/^(data|aria)-[a-z_][a-z\d_.\-]*$/</span>),
+  Properties: {
+    <span class="comment">/**
+     * Standard Properties
+     */</span>
+    accept: <span class="literal">null</span>,
+    acceptCharset: <span class="literal">null</span>,
+    accessKey: <span class="literal">null</span>,
+    action: <span class="literal">null</span>,
+    allowFullScreen: MUST_USE_ATTRIBUTE | HAS_BOOLEAN_VALUE,
+    allowTransparency: MUST_USE_ATTRIBUTE,
+    alt: <span class="literal">null</span>,
+    async: HAS_BOOLEAN_VALUE,
+    autoComplete: <span class="literal">null</span>,
+    <span class="comment">// autoFocus is polyfilled/normalized by AutoFocusUtils</span>
+    <span class="comment">// autoFocus: HAS_BOOLEAN_VALUE,</span>
+    autoPlay: HAS_BOOLEAN_VALUE,
+    capture: MUST_USE_ATTRIBUTE | HAS_BOOLEAN_VALUE,
+    cellPadding: MUST_USE_ATTRIBUTE,
+    cellSpacing: MUST_USE_ATTRIBUTE,
+    charSet: MUST_USE_ATTRIBUTE,
+    challenge: MUST_USE_ATTRIBUTE,
+    checked: MUST_USE_PROPERTY | HAS_BOOLEAN_VALUE,
+    classID: MUST_USE_ATTRIBUTE,
+    <span class="comment">// To set className on SVG elements, it's necessary to use .setAttribute;</span>
+    <span class="comment">// this works on HTML elements too in all browsers except IE8. Conveniently,</span>
+    <span class="comment">// IE8 doesn't support SVG and so we can simply use the attribute in</span>
+    <span class="comment">// browsers that support SVG and the property in browsers that don't,</span>
+    <span class="comment">// regardless of whether the element is HTML or SVG.</span>
+    className: hasSVG ? MUST_USE_ATTRIBUTE : MUST_USE_PROPERTY,
+    cols: MUST_USE_ATTRIBUTE | HAS_POSITIVE_NUMERIC_VALUE,
+    colSpan: MUST_USE_ATTRIBUTE,
+    content: <span class="literal">null</span>,
+    contentEditable: MUST_USE_ATTRIBUTE,
+    contextMenu: MUST_USE_ATTRIBUTE,
+    controls: MUST_USE_PROPERTY | HAS_BOOLEAN_VALUE,
+    coords: <span class="literal">null</span>,
+    crossOrigin: <span class="literal">null</span>,
+    data: <span class="literal">null</span>, <span class="comment">// For `&lt;object />` acts as `src`.</span>
+    dateTime: MUST_USE_ATTRIBUTE,
+    <span class="string">'default'</span>: HAS_BOOLEAN_VALUE,
+    defer: HAS_BOOLEAN_VALUE,
+    dir: MUST_USE_ATTRIBUTE,
+    disabled: MUST_USE_ATTRIBUTE | HAS_BOOLEAN_VALUE,
+    download: HAS_OVERLOADED_BOOLEAN_VALUE,
+    draggable: <span class="literal">null</span>,
+    encType: MUST_USE_ATTRIBUTE,
+    form: MUST_USE_ATTRIBUTE,
+    formAction: MUST_USE_ATTRIBUTE,
+    formEncType: MUST_USE_ATTRIBUTE,
+    formMethod: MUST_USE_ATTRIBUTE,
+    formNoValidate: HAS_BOOLEAN_VALUE,
+    formTarget: MUST_USE_ATTRIBUTE,
+    frameBorder: MUST_USE_ATTRIBUTE,
+    headers: <span class="literal">null</span>,
+    height: MUST_USE_ATTRIBUTE,
+    hidden: MUST_USE_ATTRIBUTE | HAS_BOOLEAN_VALUE,
+    high: <span class="literal">null</span>,
+    href: <span class="literal">null</span>,
+    hrefLang: <span class="literal">null</span>,
+    htmlFor: <span class="literal">null</span>,
+    httpEquiv: <span class="literal">null</span>,
+    icon: <span class="literal">null</span>,
+    id: MUST_USE_PROPERTY,
+    inputMode: MUST_USE_ATTRIBUTE,
+    integrity: <span class="literal">null</span>,
+    is: MUST_USE_ATTRIBUTE,
+    keyParams: MUST_USE_ATTRIBUTE,
+    keyType: MUST_USE_ATTRIBUTE,
+    kind: <span class="literal">null</span>,
+    label: <span class="literal">null</span>,
+    lang: <span class="literal">null</span>,
+    list: MUST_USE_ATTRIBUTE,
+    loop: MUST_USE_ATTRIBUTE | HAS_BOOLEAN_VALUE,
+    low: <span class="literal">null</span>,
+    manifest: MUST_USE_ATTRIBUTE,
+    marginHeight: MUST_USE_ATTRIBUTE,
+    marginWidth: MUST_USE_ATTRIBUTE,
+    max: <span class="literal">null</span>,
+    maxLength: MUST_USE_ATTRIBUTE,
+    media: MUST_USE_ATTRIBUTE,
+    mediaGroup: <span class="literal">null</span>,
+    method: MUST_USE_ATTRIBUTE,
+    min: <span class="literal">null</span>,
+    minLength: MUST_USE_ATTRIBUTE,
+    multiple: MUST_USE_PROPERTY | HAS_BOOLEAN_VALUE,
+    muted: MUST_USE_PROPERTY | HAS_BOOLEAN_VALUE,
+    name: <span class="literal">null</span>,
+    noValidate: HAS_BOOLEAN_VALUE,
+    open: HAS_BOOLEAN_VALUE,
+    optimum: <span class="literal">null</span>,
+    pattern: <span class="literal">null</span>,
+    placeholder: <span class="literal">null</span>,
+    poster: <span class="literal">null</span>,
+    preload: <span class="literal">null</span>,
+    radioGroup: <span class="literal">null</span>,
+    readOnly: MUST_USE_PROPERTY | HAS_BOOLEAN_VALUE,
+    rel: <span class="literal">null</span>,
+    required: HAS_BOOLEAN_VALUE,
+    role: MUST_USE_ATTRIBUTE,
+    rows: MUST_USE_ATTRIBUTE | HAS_POSITIVE_NUMERIC_VALUE,
+    rowSpan: MUST_USE_ATTRIBUTE | HAS_NUMERIC_VALUE,
+    sandbox: <span class="literal">null</span>,
+    scope: <span class="literal">null</span>,
+    scoped: HAS_BOOLEAN_VALUE,
+    scrolling: MUST_USE_ATTRIBUTE,
+    seamless: MUST_USE_ATTRIBUTE | HAS_BOOLEAN_VALUE,
+    selected: MUST_USE_PROPERTY | HAS_BOOLEAN_VALUE,
+    shape: <span class="literal">null</span>,
+    size: MUST_USE_ATTRIBUTE | HAS_POSITIVE_NUMERIC_VALUE,
+    sizes: MUST_USE_ATTRIBUTE,
+    span: MUST_USE_ATTRIBUTE | HAS_POSITIVE_NUMERIC_VALUE,
+    spellCheck: <span class="literal">null</span>,
+    src: <span class="literal">null</span>,
+    srcDoc: MUST_USE_PROPERTY,
+    srcLang: <span class="literal">null</span>,
+    srcSet: MUST_USE_ATTRIBUTE,
+    start: MUST_USE_ATTRIBUTE | HAS_NUMERIC_VALUE,
+    step: <span class="literal">null</span>,
+    style: <span class="literal">null</span>,
+    summary: <span class="literal">null</span>,
+    tabIndex: <span class="literal">null</span>,
+    target: <span class="literal">null</span>,
+    title: <span class="literal">null</span>,
+    <span class="comment">// Setting .type throws on non-&lt;input> tags</span>
+    type: MUST_USE_ATTRIBUTE,
+    useMap: <span class="literal">null</span>,
+    value: MUST_USE_PROPERTY | HAS_SIDE_EFFECTS,
+    width: MUST_USE_ATTRIBUTE,
+    wmode: MUST_USE_ATTRIBUTE,
+    wrap: MUST_USE_ATTRIBUTE,
+
+    <span class="comment">/**
+     * RDFa Properties
+     */</span>
+    about: MUST_USE_ATTRIBUTE,
+    datatype: MUST_USE_ATTRIBUTE,
+    inlist: MUST_USE_ATTRIBUTE,
+    prefix: MUST_USE_ATTRIBUTE,
+    <span class="comment">// property is also supported for OpenGraph in meta tags.</span>
+    property: MUST_USE_ATTRIBUTE,
+    resource: MUST_USE_ATTRIBUTE,
+    <span class="string">'typeof'</span>: MUST_USE_ATTRIBUTE,
+    vocab: MUST_USE_ATTRIBUTE,
+
+    <span class="comment">/**
+     * Non-standard Properties
+     */</span>
+    <span class="comment">// autoCapitalize and autoCorrect are supported in Mobile Safari for</span>
+    <span class="comment">// keyboard hints.</span>
+    autoCapitalize: <span class="literal">null</span>,
+    autoCorrect: <span class="literal">null</span>,
+    <span class="comment">// autoSave allows WebKit/Blink to persist values of input fields on page reloads</span>
+    autoSave: <span class="literal">null</span>,
+    <span class="comment">// color is for Safari mask-icon link</span>
+    color: <span class="literal">null</span>,
+    <span class="comment">// itemProp, itemScope, itemType are for</span>
+    <span class="comment">// Microdata support. See http://schema.org/docs/gs.html</span>
+    itemProp: MUST_USE_ATTRIBUTE,
+    itemScope: MUST_USE_ATTRIBUTE | HAS_BOOLEAN_VALUE,
+    itemType: MUST_USE_ATTRIBUTE,
+    <span class="comment">// itemID and itemRef are for Microdata support as well but</span>
+    <span class="comment">// only specified in the the WHATWG spec document. See</span>
+    <span class="comment">// https://html.spec.whatwg.org/multipage/microdata.html#microdata-dom-api</span>
+    itemID: MUST_USE_ATTRIBUTE,
+    itemRef: MUST_USE_ATTRIBUTE,
+    <span class="comment">// results show looking glass icon and recent searches on input</span>
+    <span class="comment">// search fields in WebKit/Blink</span>
+    results: <span class="literal">null</span>,
+    <span class="comment">// IE-only attribute that specifies security restrictions on an iframe</span>
+    <span class="comment">// as an alternative to the sandbox attribute on IE&lt;10</span>
+    security: MUST_USE_ATTRIBUTE,
+    <span class="comment">// IE-only attribute that controls focus behavior</span>
+    unselectable: MUST_USE_ATTRIBUTE
+  },
+  DOMAttributeNames: {
+    acceptCharset: <span class="string">'accept-charset'</span>,
+    className: <span class="string">'class'</span>,
+    htmlFor: <span class="string">'for'</span>,
+    httpEquiv: <span class="string">'http-equiv'</span>
+  },
+  DOMPropertyNames: {
+    autoCapitalize: <span class="string">'autocapitalize'</span>,
+    autoComplete: <span class="string">'autocomplete'</span>,
+    autoCorrect: <span class="string">'autocorrect'</span>,
+    autoFocus: <span class="string">'autofocus'</span>,
+    autoPlay: <span class="string">'autoplay'</span>,
+    autoSave: <span class="string">'autosave'</span>,
+    hrefLang: <span class="string">'hreflang'</span>,
+    radioGroup: <span class="string">'radiogroup'</span>,
+    spellCheck: <span class="string">'spellcheck'</span>,
+    srcDoc: <span class="string">'srcdoc'</span>,
+    srcSet: <span class="string">'srcset'</span>
+  }
+};
+
+module.exports = HTMLDOMPropertyConfig;</code></pre>

@@ -1,0 +1,94 @@
+<h1>EventConstants.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule EventConstants
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> keyMirror = require(<span class="string">'fbjs/lib/keyMirror'</span>);
+
+<span class="keyword">var</span> PropagationPhases = keyMirror({ bubbled: <span class="literal">null</span>, captured: <span class="literal">null</span> });
+
+<span class="comment">/**
+ * Types of raw signals from the browser caught at the top level.
+ */</span>
+<span class="keyword">var</span> topLevelTypes = keyMirror({
+  topAbort: <span class="literal">null</span>,
+  topBlur: <span class="literal">null</span>,
+  topCanPlay: <span class="literal">null</span>,
+  topCanPlayThrough: <span class="literal">null</span>,
+  topChange: <span class="literal">null</span>,
+  topClick: <span class="literal">null</span>,
+  topCompositionEnd: <span class="literal">null</span>,
+  topCompositionStart: <span class="literal">null</span>,
+  topCompositionUpdate: <span class="literal">null</span>,
+  topContextMenu: <span class="literal">null</span>,
+  topCopy: <span class="literal">null</span>,
+  topCut: <span class="literal">null</span>,
+  topDoubleClick: <span class="literal">null</span>,
+  topDrag: <span class="literal">null</span>,
+  topDragEnd: <span class="literal">null</span>,
+  topDragEnter: <span class="literal">null</span>,
+  topDragExit: <span class="literal">null</span>,
+  topDragLeave: <span class="literal">null</span>,
+  topDragOver: <span class="literal">null</span>,
+  topDragStart: <span class="literal">null</span>,
+  topDrop: <span class="literal">null</span>,
+  topDurationChange: <span class="literal">null</span>,
+  topEmptied: <span class="literal">null</span>,
+  topEncrypted: <span class="literal">null</span>,
+  topEnded: <span class="literal">null</span>,
+  topError: <span class="literal">null</span>,
+  topFocus: <span class="literal">null</span>,
+  topInput: <span class="literal">null</span>,
+  topInvalid: <span class="literal">null</span>,
+  topKeyDown: <span class="literal">null</span>,
+  topKeyPress: <span class="literal">null</span>,
+  topKeyUp: <span class="literal">null</span>,
+  topLoad: <span class="literal">null</span>,
+  topLoadedData: <span class="literal">null</span>,
+  topLoadedMetadata: <span class="literal">null</span>,
+  topLoadStart: <span class="literal">null</span>,
+  topMouseDown: <span class="literal">null</span>,
+  topMouseMove: <span class="literal">null</span>,
+  topMouseOut: <span class="literal">null</span>,
+  topMouseOver: <span class="literal">null</span>,
+  topMouseUp: <span class="literal">null</span>,
+  topPaste: <span class="literal">null</span>,
+  topPause: <span class="literal">null</span>,
+  topPlay: <span class="literal">null</span>,
+  topPlaying: <span class="literal">null</span>,
+  topProgress: <span class="literal">null</span>,
+  topRateChange: <span class="literal">null</span>,
+  topReset: <span class="literal">null</span>,
+  topScroll: <span class="literal">null</span>,
+  topSeeked: <span class="literal">null</span>,
+  topSeeking: <span class="literal">null</span>,
+  topSelectionChange: <span class="literal">null</span>,
+  topStalled: <span class="literal">null</span>,
+  topSubmit: <span class="literal">null</span>,
+  topSuspend: <span class="literal">null</span>,
+  topTextInput: <span class="literal">null</span>,
+  topTimeUpdate: <span class="literal">null</span>,
+  topTouchCancel: <span class="literal">null</span>,
+  topTouchEnd: <span class="literal">null</span>,
+  topTouchMove: <span class="literal">null</span>,
+  topTouchStart: <span class="literal">null</span>,
+  topVolumeChange: <span class="literal">null</span>,
+  topWaiting: <span class="literal">null</span>,
+  topWheel: <span class="literal">null</span>
+});
+
+<span class="keyword">var</span> EventConstants = {
+  topLevelTypes: topLevelTypes,
+  PropagationPhases: PropagationPhases
+};
+
+module.exports = EventConstants;</code></pre>

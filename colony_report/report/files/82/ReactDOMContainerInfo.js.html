@@ -1,0 +1,33 @@
+<h1>ReactDOMContainerInfo.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDOMContainerInfo
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> validateDOMNesting = require(<span class="string">'./validateDOMNesting'</span>);
+
+<span class="keyword">var</span> DOC_NODE_TYPE = <span class="number">9</span>;
+
+<span class="function"><span class="keyword">function</span> <span class="title">ReactDOMContainerInfo</span><span class="params">(topLevelWrapper, node)</span> {</span>
+  <span class="keyword">var</span> info = {
+    _topLevelWrapper: topLevelWrapper,
+    _idCounter: <span class="number">1</span>,
+    _ownerDocument: node ? node.nodeType === DOC_NODE_TYPE ? node : node.ownerDocument : <span class="literal">null</span>,
+    _tag: node ? node.nodeName.toLowerCase() : <span class="literal">null</span>,
+    _namespaceURI: node ? node.namespaceURI : <span class="literal">null</span>
+  };
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    info._ancestorInfo = node ? validateDOMNesting.updatedAncestorInfo(<span class="literal">null</span>, info._tag, <span class="literal">null</span>) : <span class="literal">null</span>;
+  }
+  <span class="keyword">return</span> info;
+}
+
+module.exports = ReactDOMContainerInfo;</code></pre>

@@ -1,0 +1,41 @@
+<h1>getIteratorFn.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule getIteratorFn
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="comment">/* global Symbol */</span>
+<span class="keyword">var</span> ITERATOR_SYMBOL = <span class="keyword">typeof</span> Symbol === <span class="string">'function'</span> &amp;&amp; Symbol.iterator;
+<span class="keyword">var</span> FAUX_ITERATOR_SYMBOL = <span class="string">'@@iterator'</span>; <span class="comment">// Before Symbol spec.</span>
+
+<span class="comment">/**
+ * Returns the iterator method function contained on the iterable object.
+ *
+ * Be sure to invoke the function with the iterable as context:
+ *
+ *     var iteratorFn = getIteratorFn(myIterable);
+ *     if (iteratorFn) {
+ *       var iterator = iteratorFn.call(myIterable);
+ *       ...
+ *     }
+ *
+ * @param {?object} maybeIterable
+ * @return {?function}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getIteratorFn</span><span class="params">(maybeIterable)</span> {</span>
+  <span class="keyword">var</span> iteratorFn = maybeIterable &amp;&amp; (ITERATOR_SYMBOL &amp;&amp; maybeIterable[ITERATOR_SYMBOL] || maybeIterable[FAUX_ITERATOR_SYMBOL]);
+  <span class="keyword">if</span> (<span class="keyword">typeof</span> iteratorFn === <span class="string">'function'</span>) {
+    <span class="keyword">return</span> iteratorFn;
+  }
+}
+
+module.exports = getIteratorFn;</code></pre>

@@ -1,0 +1,181 @@
+<h1>ResponderTouchHistoryStore.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ResponderTouchHistoryStore
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> EventPluginUtils = require(<span class="string">'./EventPluginUtils'</span>);
+
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+
+<span class="keyword">var</span> isMoveish = EventPluginUtils.isMoveish;
+<span class="keyword">var</span> isStartish = EventPluginUtils.isStartish;
+<span class="keyword">var</span> isEndish = EventPluginUtils.isEndish;
+
+<span class="keyword">var</span> MAX_TOUCH_BANK = <span class="number">20</span>;
+
+<span class="comment">/**
+ * Touch position/time tracking information by touchID. Typically, we'll only
+ * see IDs with a range of 1-20 (they are recycled when touches end and then
+ * start again). This data is commonly needed by many different interaction
+ * logic modules so precomputing it is very helpful to do once.
+ * Each touch object in `touchBank` is of the following form:
+ * { touchActive: boolean,
+ *   startTimeStamp: number,
+ *   startPageX: number,
+ *   startPageY: number,
+ *   currentPageX: number,
+ *   currentPageY: number,
+ *   currentTimeStamp: number
+ * }
+ */</span>
+<span class="keyword">var</span> touchHistory = {
+  touchBank: [],
+  numberActiveTouches: <span class="number">0</span>,
+  <span class="comment">// If there is only one active touch, we remember its location. This prevents</span>
+  <span class="comment">// us having to loop through all of the touches all the time in the most</span>
+  <span class="comment">// common case.</span>
+  indexOfSingleActiveTouch: -<span class="number">1</span>,
+  mostRecentTimeStamp: <span class="number">0</span>
+};
+
+<span class="keyword">var</span> timestampForTouch = <span class="function"><span class="keyword">function</span> <span class="params">(touch)</span> {</span>
+  <span class="comment">// The legacy internal implementation provides "timeStamp", which has been</span>
+  <span class="comment">// renamed to "timestamp". Let both work for now while we iron it out</span>
+  <span class="comment">// TODO (evv): rename timeStamp to timestamp in internal code</span>
+  <span class="keyword">return</span> touch.timeStamp || touch.timestamp;
+};
+
+<span class="comment">/**
+ * TODO: Instead of making gestures recompute filtered velocity, we could
+ * include a built in velocity computation that can be reused globally.
+ * @param {Touch} touch Native touch object.
+ */</span>
+<span class="keyword">var</span> initializeTouchData = <span class="function"><span class="keyword">function</span> <span class="params">(touch)</span> {</span>
+  <span class="keyword">return</span> {
+    touchActive: <span class="literal">true</span>,
+    startTimeStamp: timestampForTouch(touch),
+    startPageX: touch.pageX,
+    startPageY: touch.pageY,
+    currentPageX: touch.pageX,
+    currentPageY: touch.pageY,
+    currentTimeStamp: timestampForTouch(touch),
+    previousPageX: touch.pageX,
+    previousPageY: touch.pageY,
+    previousTimeStamp: timestampForTouch(touch)
+  };
+};
+
+<span class="keyword">var</span> reinitializeTouchTrack = <span class="function"><span class="keyword">function</span> <span class="params">(touchTrack, touch)</span> {</span>
+  touchTrack.touchActive = <span class="literal">true</span>;
+  touchTrack.startTimeStamp = timestampForTouch(touch);
+  touchTrack.startPageX = touch.pageX;
+  touchTrack.startPageY = touch.pageY;
+  touchTrack.currentPageX = touch.pageX;
+  touchTrack.currentPageY = touch.pageY;
+  touchTrack.currentTimeStamp = timestampForTouch(touch);
+  touchTrack.previousPageX = touch.pageX;
+  touchTrack.previousPageY = touch.pageY;
+  touchTrack.previousTimeStamp = timestampForTouch(touch);
+};
+
+<span class="keyword">var</span> validateTouch = <span class="function"><span class="keyword">function</span> <span class="params">(touch)</span> {</span>
+  <span class="keyword">var</span> identifier = touch.identifier;
+  !(identifier != <span class="literal">null</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Touch object is missing identifier'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  <span class="keyword">if</span> (identifier > MAX_TOUCH_BANK) {
+    console.warn(<span class="string">'Touch identifier '</span> + identifier + <span class="string">' is greater than maximum '</span> + <span class="string">'supported '</span> + MAX_TOUCH_BANK + <span class="string">' which causes performance issues '</span> + <span class="string">'backfilling array locations for all of the indices.'</span>);
+  }
+};
+
+<span class="keyword">var</span> recordStartTouchData = <span class="function"><span class="keyword">function</span> <span class="params">(touch)</span> {</span>
+  <span class="keyword">var</span> touchBank = touchHistory.touchBank;
+  <span class="keyword">var</span> identifier = touch.identifier;
+  <span class="keyword">var</span> touchTrack = touchBank[identifier];
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    validateTouch(touch);
+  }
+  <span class="keyword">if</span> (touchTrack) {
+    reinitializeTouchTrack(touchTrack, touch);
+  } <span class="keyword">else</span> {
+    touchBank[touch.identifier] = initializeTouchData(touch);
+  }
+  touchHistory.mostRecentTimeStamp = timestampForTouch(touch);
+};
+
+<span class="keyword">var</span> recordMoveTouchData = <span class="function"><span class="keyword">function</span> <span class="params">(touch)</span> {</span>
+  <span class="keyword">var</span> touchBank = touchHistory.touchBank;
+  <span class="keyword">var</span> touchTrack = touchBank[touch.identifier];
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    validateTouch(touch);
+    !touchTrack ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Touch data should have been recorded on start'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  }
+  touchTrack.touchActive = <span class="literal">true</span>;
+  touchTrack.previousPageX = touchTrack.currentPageX;
+  touchTrack.previousPageY = touchTrack.currentPageY;
+  touchTrack.previousTimeStamp = touchTrack.currentTimeStamp;
+  touchTrack.currentPageX = touch.pageX;
+  touchTrack.currentPageY = touch.pageY;
+  touchTrack.currentTimeStamp = timestampForTouch(touch);
+  touchHistory.mostRecentTimeStamp = timestampForTouch(touch);
+};
+
+<span class="keyword">var</span> recordEndTouchData = <span class="function"><span class="keyword">function</span> <span class="params">(touch)</span> {</span>
+  <span class="keyword">var</span> touchBank = touchHistory.touchBank;
+  <span class="keyword">var</span> touchTrack = touchBank[touch.identifier];
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    validateTouch(touch);
+    !touchTrack ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Touch data should have been recorded on start'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  }
+  touchTrack.previousPageX = touchTrack.currentPageX;
+  touchTrack.previousPageY = touchTrack.currentPageY;
+  touchTrack.previousTimeStamp = touchTrack.currentTimeStamp;
+  touchTrack.currentPageX = touch.pageX;
+  touchTrack.currentPageY = touch.pageY;
+  touchTrack.currentTimeStamp = timestampForTouch(touch);
+  touchTrack.touchActive = <span class="literal">false</span>;
+  touchHistory.mostRecentTimeStamp = timestampForTouch(touch);
+};
+
+<span class="keyword">var</span> ResponderTouchHistoryStore = {
+  recordTouchTrack: <span class="function"><span class="keyword">function</span> <span class="params">(topLevelType, nativeEvent)</span> {</span>
+    <span class="keyword">var</span> touchBank = touchHistory.touchBank;
+    <span class="keyword">if</span> (isMoveish(topLevelType)) {
+      nativeEvent.changedTouches.forEach(recordMoveTouchData);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (isStartish(topLevelType)) {
+      nativeEvent.changedTouches.forEach(recordStartTouchData);
+      touchHistory.numberActiveTouches = nativeEvent.touches.length;
+      <span class="keyword">if</span> (touchHistory.numberActiveTouches === <span class="number">1</span>) {
+        touchHistory.indexOfSingleActiveTouch = nativeEvent.touches[<span class="number">0</span>].identifier;
+      }
+    } <span class="keyword">else</span> <span class="keyword">if</span> (isEndish(topLevelType)) {
+      nativeEvent.changedTouches.forEach(recordEndTouchData);
+      touchHistory.numberActiveTouches = nativeEvent.touches.length;
+      <span class="keyword">if</span> (touchHistory.numberActiveTouches === <span class="number">1</span>) {
+        <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; touchBank.length; i++) {
+          <span class="keyword">var</span> touchTrackToCheck = touchBank[i];
+          <span class="keyword">if</span> (touchTrackToCheck != <span class="literal">null</span> &amp;&amp; touchTrackToCheck.touchActive) {
+            touchHistory.indexOfSingleActiveTouch = i;
+            <span class="keyword">break</span>;
+          }
+        }
+        <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+          <span class="keyword">var</span> activeTouchData = touchBank[touchHistory.indexOfSingleActiveTouch];
+          <span class="keyword">var</span> foundActive = activeTouchData != <span class="literal">null</span> &amp;&amp; !!activeTouchData.touchActive;
+          !foundActive ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Cannot find single active touch'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+        }
+      }
+    }
+  },
+
+  touchHistory: touchHistory
+};
+
+module.exports = ResponderTouchHistoryStore;</code></pre>

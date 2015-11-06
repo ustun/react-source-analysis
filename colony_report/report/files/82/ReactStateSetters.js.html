@@ -1,0 +1,105 @@
+<h1>ReactStateSetters.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactStateSetters
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactStateSetters = {
+  <span class="comment">/**
+   * Returns a function that calls the provided function, and uses the result
+   * of that to set the component's state.
+   *
+   * @param {ReactCompositeComponent} component
+   * @param {function} funcReturningState Returned callback uses this to
+   *                                      determine how to update state.
+   * @return {function} callback that when invoked uses funcReturningState to
+   *                    determined the object literal to setState.
+   */</span>
+  createStateSetter: <span class="function"><span class="keyword">function</span> <span class="params">(component, funcReturningState)</span> {</span>
+    <span class="keyword">return</span> <span class="function"><span class="keyword">function</span> <span class="params">(a, b, c, d, e, f)</span> {</span>
+      <span class="keyword">var</span> partialState = funcReturningState.call(component, a, b, c, d, e, f);
+      <span class="keyword">if</span> (partialState) {
+        component.setState(partialState);
+      }
+    };
+  },
+
+  <span class="comment">/**
+   * Returns a single-argument callback that can be used to update a single
+   * key in the component's state.
+   *
+   * Note: this is memoized function, which makes it inexpensive to call.
+   *
+   * @param {ReactCompositeComponent} component
+   * @param {string} key The key in the state that you should update.
+   * @return {function} callback of 1 argument which calls setState() with
+   *                    the provided keyName and callback argument.
+   */</span>
+  createStateKeySetter: <span class="function"><span class="keyword">function</span> <span class="params">(component, key)</span> {</span>
+    <span class="comment">// Memoize the setters.</span>
+    <span class="keyword">var</span> cache = component.__keySetters || (component.__keySetters = {});
+    <span class="keyword">return</span> cache[key] || (cache[key] = createStateKeySetter(component, key));
+  }
+};
+
+<span class="function"><span class="keyword">function</span> <span class="title">createStateKeySetter</span><span class="params">(component, key)</span> {</span>
+  <span class="comment">// Partial state is allocated outside of the function closure so it can be</span>
+  <span class="comment">// reused with every call, avoiding memory allocation when this function</span>
+  <span class="comment">// is called.</span>
+  <span class="keyword">var</span> partialState = {};
+  <span class="keyword">return</span> <span class="function"><span class="keyword">function</span> <span class="title">stateKeySetter</span><span class="params">(value)</span> {</span>
+    partialState[key] = value;
+    component.setState(partialState);
+  };
+}
+
+ReactStateSetters.Mixin = {
+  <span class="comment">/**
+   * Returns a function that calls the provided function, and uses the result
+   * of that to set the component's state.
+   *
+   * For example, these statements are equivalent:
+   *
+   *   this.setState({x: 1});
+   *   this.createStateSetter(function(xValue) {
+   *     return {x: xValue};
+   *   })(1);
+   *
+   * @param {function} funcReturningState Returned callback uses this to
+   *                                      determine how to update state.
+   * @return {function} callback that when invoked uses funcReturningState to
+   *                    determined the object literal to setState.
+   */</span>
+  createStateSetter: <span class="function"><span class="keyword">function</span> <span class="params">(funcReturningState)</span> {</span>
+    <span class="keyword">return</span> ReactStateSetters.createStateSetter(<span class="keyword">this</span>, funcReturningState);
+  },
+
+  <span class="comment">/**
+   * Returns a single-argument callback that can be used to update a single
+   * key in the component's state.
+   *
+   * For example, these statements are equivalent:
+   *
+   *   this.setState({x: 1});
+   *   this.createStateKeySetter('x')(1);
+   *
+   * Note: this is memoized function, which makes it inexpensive to call.
+   *
+   * @param {string} key The key in the state that you should update.
+   * @return {function} callback of 1 argument which calls setState() with
+   *                    the provided keyName and callback argument.
+   */</span>
+  createStateKeySetter: <span class="function"><span class="keyword">function</span> <span class="params">(key)</span> {</span>
+    <span class="keyword">return</span> ReactStateSetters.createStateKeySetter(<span class="keyword">this</span>, key);
+  }
+};
+
+module.exports = ReactStateSetters;</code></pre>

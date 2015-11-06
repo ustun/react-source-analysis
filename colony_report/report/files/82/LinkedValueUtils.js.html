@@ -1,0 +1,135 @@
+<h1>LinkedValueUtils.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule LinkedValueUtils
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactPropTypes = require(<span class="string">'./ReactPropTypes'</span>);
+<span class="keyword">var</span> ReactPropTypeLocations = require(<span class="string">'./ReactPropTypeLocations'</span>);
+
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="keyword">var</span> hasReadOnlyValue = {
+  <span class="string">'button'</span>: <span class="literal">true</span>,
+  <span class="string">'checkbox'</span>: <span class="literal">true</span>,
+  <span class="string">'image'</span>: <span class="literal">true</span>,
+  <span class="string">'hidden'</span>: <span class="literal">true</span>,
+  <span class="string">'radio'</span>: <span class="literal">true</span>,
+  <span class="string">'reset'</span>: <span class="literal">true</span>,
+  <span class="string">'submit'</span>: <span class="literal">true</span>
+};
+
+<span class="function"><span class="keyword">function</span> <span class="title">_assertSingleLink</span><span class="params">(inputProps)</span> {</span>
+  !(inputProps.checkedLink == <span class="literal">null</span> || inputProps.valueLink == <span class="literal">null</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Cannot provide a checkedLink and a valueLink. If you want to use '</span> + <span class="string">'checkedLink, you probably don\'t want to use valueLink and vice versa.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+}
+<span class="function"><span class="keyword">function</span> <span class="title">_assertValueLink</span><span class="params">(inputProps)</span> {</span>
+  _assertSingleLink(inputProps);
+  !(inputProps.value == <span class="literal">null</span> &amp;&amp; inputProps.onChange == <span class="literal">null</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Cannot provide a valueLink and a value or onChange event. If you want '</span> + <span class="string">'to use value or onChange, you probably don\'t want to use valueLink.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">_assertCheckedLink</span><span class="params">(inputProps)</span> {</span>
+  _assertSingleLink(inputProps);
+  !(inputProps.checked == <span class="literal">null</span> &amp;&amp; inputProps.onChange == <span class="literal">null</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Cannot provide a checkedLink and a checked property or onChange event. '</span> + <span class="string">'If you want to use checked or onChange, you probably don\'t want to '</span> + <span class="string">'use checkedLink'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+}
+
+<span class="keyword">var</span> propTypes = {
+  value: <span class="function"><span class="keyword">function</span> <span class="params">(props, propName, componentName)</span> {</span>
+    <span class="keyword">if</span> (!props[propName] || hasReadOnlyValue[props.type] || props.onChange || props.readOnly || props.disabled) {
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    }
+    <span class="keyword">return</span> <span class="keyword">new</span> Error(<span class="string">'You provided a `value` prop to a form field without an '</span> + <span class="string">'`onChange` handler. This will render a read-only field. If '</span> + <span class="string">'the field should be mutable use `defaultValue`. Otherwise, '</span> + <span class="string">'set either `onChange` or `readOnly`.'</span>);
+  },
+  checked: <span class="function"><span class="keyword">function</span> <span class="params">(props, propName, componentName)</span> {</span>
+    <span class="keyword">if</span> (!props[propName] || props.onChange || props.readOnly || props.disabled) {
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    }
+    <span class="keyword">return</span> <span class="keyword">new</span> Error(<span class="string">'You provided a `checked` prop to a form field without an '</span> + <span class="string">'`onChange` handler. This will render a read-only field. If '</span> + <span class="string">'the field should be mutable use `defaultChecked`. Otherwise, '</span> + <span class="string">'set either `onChange` or `readOnly`.'</span>);
+  },
+  onChange: ReactPropTypes.func
+};
+
+<span class="keyword">var</span> loggedTypeFailures = {};
+<span class="function"><span class="keyword">function</span> <span class="title">getDeclarationErrorAddendum</span><span class="params">(owner)</span> {</span>
+  <span class="keyword">if</span> (owner) {
+    <span class="keyword">var</span> name = owner.getName();
+    <span class="keyword">if</span> (name) {
+      <span class="keyword">return</span> <span class="string">' Check the render method of `'</span> + name + <span class="string">'`.'</span>;
+    }
+  }
+  <span class="keyword">return</span> <span class="string">''</span>;
+}
+
+<span class="comment">/**
+ * Provide a linked `value` attribute for controlled forms. You should not use
+ * this outside of the ReactDOM controlled form components.
+ */</span>
+<span class="keyword">var</span> LinkedValueUtils = {
+  checkPropTypes: <span class="function"><span class="keyword">function</span> <span class="params">(tagName, props, owner)</span> {</span>
+    <span class="keyword">for</span> (<span class="keyword">var</span> propName <span class="keyword">in</span> propTypes) {
+      <span class="keyword">if</span> (propTypes.hasOwnProperty(propName)) {
+        <span class="keyword">var</span> error = propTypes[propName](props, propName, tagName, ReactPropTypeLocations.prop);
+      }
+      <span class="keyword">if</span> (error <span class="keyword">instanceof</span> Error &amp;&amp; !(error.message <span class="keyword">in</span> loggedTypeFailures)) {
+        <span class="comment">// Only monitor this failure once because there tends to be a lot of the</span>
+        <span class="comment">// same error.</span>
+        loggedTypeFailures[error.message] = <span class="literal">true</span>;
+
+        <span class="keyword">var</span> addendum = getDeclarationErrorAddendum(owner);
+        process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'Failed form propType: %s%s'</span>, error.message, addendum) : <span class="literal">undefined</span>;
+      }
+    }
+  },
+
+  <span class="comment">/**
+   * @param {object} inputProps Props for form component
+   * @return {*} current value of the input either from value prop or link.
+   */</span>
+  getValue: <span class="function"><span class="keyword">function</span> <span class="params">(inputProps)</span> {</span>
+    <span class="keyword">if</span> (inputProps.valueLink) {
+      _assertValueLink(inputProps);
+      <span class="keyword">return</span> inputProps.valueLink.value;
+    }
+    <span class="keyword">return</span> inputProps.value;
+  },
+
+  <span class="comment">/**
+   * @param {object} inputProps Props for form component
+   * @return {*} current checked status of the input either from checked prop
+   *             or link.
+   */</span>
+  getChecked: <span class="function"><span class="keyword">function</span> <span class="params">(inputProps)</span> {</span>
+    <span class="keyword">if</span> (inputProps.checkedLink) {
+      _assertCheckedLink(inputProps);
+      <span class="keyword">return</span> inputProps.checkedLink.value;
+    }
+    <span class="keyword">return</span> inputProps.checked;
+  },
+
+  <span class="comment">/**
+   * @param {object} inputProps Props for form component
+   * @param {SyntheticEvent} event change event to handle
+   */</span>
+  executeOnChange: <span class="function"><span class="keyword">function</span> <span class="params">(inputProps, event)</span> {</span>
+    <span class="keyword">if</span> (inputProps.valueLink) {
+      _assertValueLink(inputProps);
+      <span class="keyword">return</span> inputProps.valueLink.requestChange(event.target.value);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (inputProps.checkedLink) {
+      _assertCheckedLink(inputProps);
+      <span class="keyword">return</span> inputProps.checkedLink.requestChange(event.target.checked);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (inputProps.onChange) {
+      <span class="keyword">return</span> inputProps.onChange.call(<span class="literal">undefined</span>, event);
+    }
+  }
+};
+
+module.exports = LinkedValueUtils;</code></pre>

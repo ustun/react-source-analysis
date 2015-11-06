@@ -1,0 +1,41 @@
+<h1>isTextInputElement.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule isTextInputElement
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="comment">/**
+ * @see http://www.whatwg.org/specs/web-apps/current-work/multipage/the-input-element.html#input-type-attr-summary
+ */</span>
+<span class="keyword">var</span> supportedInputTypes = {
+  <span class="string">'color'</span>: <span class="literal">true</span>,
+  <span class="string">'date'</span>: <span class="literal">true</span>,
+  <span class="string">'datetime'</span>: <span class="literal">true</span>,
+  <span class="string">'datetime-local'</span>: <span class="literal">true</span>,
+  <span class="string">'email'</span>: <span class="literal">true</span>,
+  <span class="string">'month'</span>: <span class="literal">true</span>,
+  <span class="string">'number'</span>: <span class="literal">true</span>,
+  <span class="string">'password'</span>: <span class="literal">true</span>,
+  <span class="string">'range'</span>: <span class="literal">true</span>,
+  <span class="string">'search'</span>: <span class="literal">true</span>,
+  <span class="string">'tel'</span>: <span class="literal">true</span>,
+  <span class="string">'text'</span>: <span class="literal">true</span>,
+  <span class="string">'time'</span>: <span class="literal">true</span>,
+  <span class="string">'url'</span>: <span class="literal">true</span>,
+  <span class="string">'week'</span>: <span class="literal">true</span>
+};
+
+<span class="function"><span class="keyword">function</span> <span class="title">isTextInputElement</span><span class="params">(elem)</span> {</span>
+  <span class="keyword">var</span> nodeName = elem &amp;&amp; elem.nodeName &amp;&amp; elem.nodeName.toLowerCase();
+  <span class="keyword">return</span> nodeName &amp;&amp; (nodeName === <span class="string">'input'</span> &amp;&amp; supportedInputTypes[elem.type] || nodeName === <span class="string">'textarea'</span>);
+}
+
+module.exports = isTextInputElement;</code></pre>

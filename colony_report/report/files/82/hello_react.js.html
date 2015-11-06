@@ -1,0 +1,63 @@
+<h1>hello_react.js</h1>
+<pre><code class="lang-js"><span class="keyword">var</span> StackTrace = require(<span class="string">'stacktrace-js'</span>);
+<span class="keyword">var</span> p = <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+  StackTrace.get().then(<span class="function"><span class="keyword">function</span> <span class="params">(x)</span> {</span>
+    console.log.bind(console)(JSON.stringify(x, <span class="literal">null</span>, <span class="number">4</span>));
+  });
+};
+<span class="keyword">var</span> React = require(<span class="string">'./React'</span>);
+<span class="keyword">var</span> ReactDOM = require(<span class="string">'./ReactDOM'</span>);
+window.p = p;
+
+<span class="keyword">var</span> Hello = React.createClass({
+
+  render() {
+    p()
+    <span class="keyword">return</span> &lt;div className=<span class="string">""</span>>
+      Hello there!
+      &lt;<span class="regexp">/div>;
+
+  }
+
+});
+
+
+var Counter = React.createClass({
+
+  getInitialState() {
+    return {count: this.props.initialValue};
+  },
+
+  onClick() {
+    this.setState({count: this.state.count + 1});
+  },
+
+  render() {
+    p()
+    return &lt;div className="">
+      &lt;div>Counter value is: {this.state.count}&lt;/</span>div>
+      &lt;button onClick={<span class="keyword">this</span>.onClick} className=<span class="string">"pure-button pure-button-primary"</span>>Submit&lt;<span class="regexp">/button>
+
+      &lt;/</span>div>;
+
+  }
+
+});
+
+
+<span class="keyword">var</span> App = React.createClass({
+
+  render() {
+    p();
+    <span class="keyword">return</span> &lt;div className=<span class="string">""</span>>
+      &lt;Hello/>
+      &lt;Counter initialValue={<span class="number">5</span>}/>
+      &lt;<span class="regexp">/div>;
+
+  }
+
+});
+
+var el = &lt;App/</span>>;
+ReactDOM.render(el, document.getElementById(<span class="string">'main'</span>));
+</code></pre>

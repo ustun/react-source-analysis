@@ -1,0 +1,143 @@
+<h1>DOMChildrenOperations.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule DOMChildrenOperations
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> DOMLazyTree = require(<span class="string">'./DOMLazyTree'</span>);
+<span class="keyword">var</span> Danger = require(<span class="string">'./Danger'</span>);
+<span class="keyword">var</span> ReactMultiChildUpdateTypes = require(<span class="string">'./ReactMultiChildUpdateTypes'</span>);
+<span class="keyword">var</span> ReactPerf = require(<span class="string">'./ReactPerf'</span>);
+
+<span class="keyword">var</span> setInnerHTML = require(<span class="string">'./setInnerHTML'</span>);
+<span class="keyword">var</span> setTextContent = require(<span class="string">'./setTextContent'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+
+<span class="comment">/**
+ * Inserts `childNode` as a child of `parentNode` at the `index`.
+ *
+ * @param {DOMElement} parentNode Parent node in which to insert.
+ * @param {DOMElement} childNode Child node to insert.
+ * @param {number} index Index at which to insert the child.
+ * @internal
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">insertChildAt</span><span class="params">(parentNode, childNode, index)</span> {</span>
+  <span class="comment">// We can rely exclusively on `insertBefore(node, null)` instead of also using</span>
+  <span class="comment">// `appendChild(node)`. (Using `undefined` is not allowed by all browsers so</span>
+  <span class="comment">// we are careful to use `null`.)</span>
+
+  <span class="comment">// In Safari, .childNodes[index] can return a DOM node with id={index} so we</span>
+  <span class="comment">// use .item() instead which is immune to this bug. (See #3560.) In contrast</span>
+  <span class="comment">// to the spec, IE8 throws an error if index is larger than the list size.</span>
+  <span class="keyword">var</span> referenceNode = index &lt; parentNode.childNodes.length ? parentNode.childNodes.item(index) : <span class="literal">null</span>;
+
+  parentNode.insertBefore(childNode, referenceNode);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">insertLazyTreeChildAt</span><span class="params">(parentNode, childTree, index)</span> {</span>
+  <span class="comment">// See above.</span>
+  <span class="keyword">var</span> referenceNode = index &lt; parentNode.childNodes.length ? parentNode.childNodes.item(index) : <span class="literal">null</span>;
+
+  DOMLazyTree.insertTreeBefore(parentNode, childTree, referenceNode);
+}
+
+<span class="comment">/**
+ * Operations for updating with DOM children.
+ */</span>
+<span class="keyword">var</span> DOMChildrenOperations = {
+
+  dangerouslyReplaceNodeWithMarkup: Danger.dangerouslyReplaceNodeWithMarkup,
+
+  updateTextContent: setTextContent,
+
+  <span class="comment">/**
+   * Updates a component's children by processing a series of updates. The
+   * update configurations are each expected to have a `parentNode` property.
+   *
+   * @param {array&lt;object>} updates List of update configurations.
+   * @param {array&lt;string>} markupList List of markup strings.
+   * @internal
+   */</span>
+  processUpdates: <span class="function"><span class="keyword">function</span> <span class="params">(updates, markupList)</span> {</span>
+    <span class="keyword">var</span> update;
+    <span class="comment">// Mapping from parent IDs to initial child orderings.</span>
+    <span class="keyword">var</span> initialChildren = <span class="literal">null</span>;
+    <span class="comment">// List of children that will be moved or removed.</span>
+    <span class="keyword">var</span> updatedChildren = <span class="literal">null</span>;
+
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; updates.length; i++) {
+      update = updates[i];
+      <span class="keyword">if</span> (update.type === ReactMultiChildUpdateTypes.MOVE_EXISTING || update.type === ReactMultiChildUpdateTypes.REMOVE_NODE) {
+        <span class="keyword">var</span> updatedIndex = update.fromIndex;
+        <span class="keyword">var</span> updatedChild = update.parentNode.childNodes[updatedIndex];
+        <span class="keyword">var</span> parentID = update.parentID;
+
+        !updatedChild ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'processUpdates(): Unable to find child %s of element. This '</span> + <span class="string">'probably means the DOM was unexpectedly mutated (e.g., by the '</span> + <span class="string">'browser), usually due to forgetting a &lt;tbody> when using tables, '</span> + <span class="string">'nesting tags like &lt;form>, &lt;p>, or &lt;a>, or using non-SVG elements '</span> + <span class="string">'in an &lt;svg> parent. Try inspecting the child nodes of the element '</span> + <span class="string">'with React ID `%s`.'</span>, updatedIndex, parentID) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+        initialChildren = initialChildren || {};
+        initialChildren[parentID] = initialChildren[parentID] || [];
+        initialChildren[parentID][updatedIndex] = updatedChild;
+
+        updatedChildren = updatedChildren || [];
+        updatedChildren.push(updatedChild);
+      }
+    }
+
+    <span class="comment">// markupList is either a list of markup or just a list of elements</span>
+    <span class="keyword">var</span> isHTML = markupList.length &amp;&amp; <span class="keyword">typeof</span> markupList[<span class="number">0</span>] === <span class="string">'string'</span>;
+    <span class="keyword">var</span> renderedMarkup;
+    <span class="keyword">if</span> (isHTML) {
+      renderedMarkup = Danger.dangerouslyRenderMarkup(markupList);
+    } <span class="keyword">else</span> {
+      renderedMarkup = markupList;
+    }
+
+    <span class="comment">// Remove updated children first so that `toIndex` is consistent.</span>
+    <span class="keyword">if</span> (updatedChildren) {
+      <span class="keyword">for</span> (<span class="keyword">var</span> j = <span class="number">0</span>; j &lt; updatedChildren.length; j++) {
+        updatedChildren[j].parentNode.removeChild(updatedChildren[j]);
+      }
+    }
+
+    <span class="keyword">for</span> (<span class="keyword">var</span> k = <span class="number">0</span>; k &lt; updates.length; k++) {
+      update = updates[k];
+      <span class="keyword">switch</span> (update.type) {
+        <span class="keyword">case</span> ReactMultiChildUpdateTypes.INSERT_MARKUP:
+          <span class="keyword">if</span> (isHTML) {
+            insertChildAt(update.parentNode, renderedMarkup[update.markupIndex], update.toIndex);
+          } <span class="keyword">else</span> {
+            insertLazyTreeChildAt(update.parentNode, renderedMarkup[update.markupIndex], update.toIndex);
+          }
+          <span class="keyword">break</span>;
+        <span class="keyword">case</span> ReactMultiChildUpdateTypes.MOVE_EXISTING:
+          insertChildAt(update.parentNode, initialChildren[update.parentID][update.fromIndex], update.toIndex);
+          <span class="keyword">break</span>;
+        <span class="keyword">case</span> ReactMultiChildUpdateTypes.SET_MARKUP:
+          setInnerHTML(update.parentNode, update.content);
+          <span class="keyword">break</span>;
+        <span class="keyword">case</span> ReactMultiChildUpdateTypes.TEXT_CONTENT:
+          setTextContent(update.parentNode, update.content);
+          <span class="keyword">break</span>;
+        <span class="keyword">case</span> ReactMultiChildUpdateTypes.REMOVE_NODE:
+          <span class="comment">// Already removed by the for-loop above.</span>
+          <span class="keyword">break</span>;
+      }
+    }
+  }
+
+};
+
+ReactPerf.measureMethods(DOMChildrenOperations, <span class="string">'DOMChildrenOperations'</span>, {
+  updateTextContent: <span class="string">'updateTextContent'</span>
+});
+
+module.exports = DOMChildrenOperations;</code></pre>

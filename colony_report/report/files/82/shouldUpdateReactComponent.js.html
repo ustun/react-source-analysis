@@ -1,0 +1,44 @@
+<h1>shouldUpdateReactComponent.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule shouldUpdateReactComponent
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="comment">/**
+ * Given a `prevElement` and `nextElement`, determines if the existing
+ * instance should be updated as opposed to being destroyed or replaced by a new
+ * instance. Both arguments are elements. This ensures that this logic can
+ * operate on stateless trees without any backing instance.
+ *
+ * @param {?object} prevElement
+ * @param {?object} nextElement
+ * @return {boolean} True if the existing instance should be updated.
+ * @protected
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">shouldUpdateReactComponent</span><span class="params">(prevElement, nextElement)</span> {</span>
+  <span class="keyword">var</span> prevEmpty = prevElement === <span class="literal">null</span> || prevElement === <span class="literal">false</span>;
+  <span class="keyword">var</span> nextEmpty = nextElement === <span class="literal">null</span> || nextElement === <span class="literal">false</span>;
+  <span class="keyword">if</span> (prevEmpty || nextEmpty) {
+    <span class="keyword">return</span> prevEmpty === nextEmpty;
+  }
+
+  <span class="keyword">var</span> prevType = <span class="keyword">typeof</span> prevElement;
+  <span class="keyword">var</span> nextType = <span class="keyword">typeof</span> nextElement;
+  <span class="keyword">if</span> (prevType === <span class="string">'string'</span> || prevType === <span class="string">'number'</span>) {
+    <span class="keyword">return</span> nextType === <span class="string">'string'</span> || nextType === <span class="string">'number'</span>;
+  } <span class="keyword">else</span> {
+    <span class="keyword">return</span> nextType === <span class="string">'object'</span> &amp;&amp; prevElement.type === nextElement.type &amp;&amp; prevElement.key === nextElement.key;
+  }
+  <span class="keyword">return</span> <span class="literal">false</span>;
+}
+
+module.exports = shouldUpdateReactComponent;</code></pre>

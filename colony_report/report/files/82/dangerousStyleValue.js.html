@@ -1,0 +1,79 @@
+<h1>dangerousStyleValue.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule dangerousStyleValue
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> CSSProperty = require(<span class="string">'./CSSProperty'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="keyword">var</span> isUnitlessNumber = CSSProperty.isUnitlessNumber;
+<span class="keyword">var</span> styleWarnings = {};
+
+<span class="comment">/**
+ * Convert a value into the proper css writable value. The style name `name`
+ * should be logical (no hyphens), as specified
+ * in `CSSProperty.isUnitlessNumber`.
+ *
+ * @param {string} name CSS property name such as `topMargin`.
+ * @param {*} value CSS property value such as `10px`.
+ * @param {ReactDOMComponent} component
+ * @return {string} Normalized style value with dimensions applied.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">dangerousStyleValue</span><span class="params">(name, value, component)</span> {</span>
+  <span class="comment">// Note that we've removed escapeTextForBrowser() calls here since the</span>
+  <span class="comment">// whole string will be escaped when the attribute is injected into</span>
+  <span class="comment">// the markup. If you provide unsafe user data here they can inject</span>
+  <span class="comment">// arbitrary CSS which may be problematic (I couldn't repro this):</span>
+  <span class="comment">// https://www.owasp.org/index.php/XSS_Filter_Evasion_Cheat_Sheet</span>
+  <span class="comment">// http://www.thespanner.co.uk/2007/11/26/ultimate-xss-css-injection/</span>
+  <span class="comment">// This is not an XSS hole but instead a potential CSS injection issue</span>
+  <span class="comment">// which has lead to a greater discussion about how we're going to</span>
+  <span class="comment">// trust URLs moving forward. See #2115901</span>
+
+  <span class="keyword">var</span> isEmpty = value == <span class="literal">null</span> || <span class="keyword">typeof</span> value === <span class="string">'boolean'</span> || value === <span class="string">''</span>;
+  <span class="keyword">if</span> (isEmpty) {
+    <span class="keyword">return</span> <span class="string">''</span>;
+  }
+
+  <span class="keyword">var</span> isNonNumeric = isNaN(value);
+  <span class="keyword">if</span> (isNonNumeric || value === <span class="number">0</span> || isUnitlessNumber.hasOwnProperty(name) &amp;&amp; isUnitlessNumber[name]) {
+    <span class="keyword">return</span> <span class="string">''</span> + value; <span class="comment">// cast to string</span>
+  }
+
+  <span class="keyword">if</span> (<span class="keyword">typeof</span> value === <span class="string">'string'</span>) {
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      <span class="keyword">if</span> (component) {
+        <span class="keyword">var</span> owner = component._currentElement._owner;
+        <span class="keyword">var</span> ownerName = owner ? owner.getName() : <span class="literal">null</span>;
+        <span class="keyword">if</span> (ownerName &amp;&amp; !styleWarnings[ownerName]) {
+          styleWarnings[ownerName] = {};
+        }
+        <span class="keyword">var</span> warned = <span class="literal">false</span>;
+        <span class="keyword">if</span> (ownerName) {
+          <span class="keyword">var</span> warnings = styleWarnings[ownerName];
+          warned = warnings[name];
+          <span class="keyword">if</span> (!warned) {
+            warnings[name] = <span class="literal">true</span>;
+          }
+        }
+        <span class="keyword">if</span> (!warned) {
+          process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'a `%s` tag (owner: `%s`) was passed a numeric string value '</span> + <span class="string">'for CSS property `%s` (value: `%s`) which will be treated '</span> + <span class="string">'as a unitless number in a future version of React.'</span>, component._currentElement.type, ownerName || <span class="string">'unknown'</span>, name, value) : <span class="literal">undefined</span>;
+        }
+      }
+    }
+    value = value.trim();
+  }
+  <span class="keyword">return</span> value + <span class="string">'px'</span>;
+}
+
+module.exports = dangerousStyleValue;</code></pre>

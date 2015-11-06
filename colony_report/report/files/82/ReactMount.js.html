@@ -1,0 +1,459 @@
+<h1>ReactMount.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactMount
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> DOMLazyTree = require(<span class="string">'./DOMLazyTree'</span>);
+<span class="keyword">var</span> DOMProperty = require(<span class="string">'./DOMProperty'</span>);
+<span class="keyword">var</span> ReactBrowserEventEmitter = require(<span class="string">'./ReactBrowserEventEmitter'</span>);
+<span class="keyword">var</span> ReactCurrentOwner = require(<span class="string">'./ReactCurrentOwner'</span>);
+<span class="keyword">var</span> ReactDOMComponentTree = require(<span class="string">'./ReactDOMComponentTree'</span>);
+<span class="keyword">var</span> ReactDOMContainerInfo = require(<span class="string">'./ReactDOMContainerInfo'</span>);
+<span class="keyword">var</span> ReactDOMFeatureFlags = require(<span class="string">'./ReactDOMFeatureFlags'</span>);
+<span class="keyword">var</span> ReactElement = require(<span class="string">'./ReactElement'</span>);
+<span class="keyword">var</span> ReactMarkupChecksum = require(<span class="string">'./ReactMarkupChecksum'</span>);
+<span class="keyword">var</span> ReactPerf = require(<span class="string">'./ReactPerf'</span>);
+<span class="keyword">var</span> ReactReconciler = require(<span class="string">'./ReactReconciler'</span>);
+<span class="keyword">var</span> ReactUpdateQueue = require(<span class="string">'./ReactUpdateQueue'</span>);
+<span class="keyword">var</span> ReactUpdates = require(<span class="string">'./ReactUpdates'</span>);
+
+<span class="keyword">var</span> emptyObject = require(<span class="string">'fbjs/lib/emptyObject'</span>);
+<span class="keyword">var</span> instantiateReactComponent = require(<span class="string">'./instantiateReactComponent'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+<span class="keyword">var</span> setInnerHTML = require(<span class="string">'./setInnerHTML'</span>);
+<span class="keyword">var</span> shouldUpdateReactComponent = require(<span class="string">'./shouldUpdateReactComponent'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="keyword">var</span> ATTR_NAME = DOMProperty.ID_ATTRIBUTE_NAME;
+<span class="keyword">var</span> ROOT_ATTR_NAME = DOMProperty.ROOT_ATTRIBUTE_NAME;
+
+<span class="keyword">var</span> ELEMENT_NODE_TYPE = <span class="number">1</span>;
+<span class="keyword">var</span> DOC_NODE_TYPE = <span class="number">9</span>;
+<span class="keyword">var</span> DOCUMENT_FRAGMENT_NODE_TYPE = <span class="number">11</span>;
+
+<span class="keyword">var</span> instancesByReactRootID = {};
+
+<span class="comment">/**
+ * Finds the index of the first character
+ * that's not common between the two given strings.
+ *
+ * @return {number} the index of the character where the strings diverge
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">firstDifferenceIndex</span><span class="params">(string1, string2)</span> {</span>
+  <span class="keyword">var</span> minLen = Math.min(string1.length, string2.length);
+  <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; minLen; i++) {
+    <span class="keyword">if</span> (string1.charAt(i) !== string2.charAt(i)) {
+      <span class="keyword">return</span> i;
+    }
+  }
+  <span class="keyword">return</span> string1.length === string2.length ? -<span class="number">1</span> : minLen;
+}
+
+<span class="comment">/**
+ * @param {DOMElement|DOMDocument} container DOM element that may contain
+ * a React component
+ * @return {?*} DOM element that may have the reactRoot ID, or null.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getReactRootElementInContainer</span><span class="params">(container)</span> {</span>
+  <span class="keyword">if</span> (!container) {
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+
+  <span class="keyword">if</span> (container.nodeType === DOC_NODE_TYPE) {
+    <span class="keyword">return</span> container.documentElement;
+  } <span class="keyword">else</span> {
+    <span class="keyword">return</span> container.firstChild;
+  }
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">internalGetID</span><span class="params">(node)</span> {</span>
+  <span class="comment">// If node is something like a window, document, or text node, none of</span>
+  <span class="comment">// which support attributes or a .getAttribute method, gracefully return</span>
+  <span class="comment">// the empty string, as if the attribute were missing.</span>
+  <span class="keyword">return</span> node.getAttribute &amp;&amp; node.getAttribute(ATTR_NAME) || <span class="string">''</span>;
+}
+
+<span class="comment">/**
+ * Mounts this component and inserts it into the DOM.
+ *
+ * @param {ReactComponent} componentInstance The instance to mount.
+ * @param {DOMElement} container DOM element to mount into.
+ * @param {ReactReconcileTransaction} transaction
+ * @param {boolean} shouldReuseMarkup If true, do not insert markup
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">mountComponentIntoNode</span><span class="params">(wrapperInstance, container, transaction, shouldReuseMarkup, context)</span> {</span>
+  <span class="keyword">var</span> markup = ReactReconciler.mountComponent(wrapperInstance, transaction, <span class="literal">null</span>, ReactDOMContainerInfo(wrapperInstance, container), context);
+  wrapperInstance._renderedComponent._topLevelWrapper = wrapperInstance;
+  ReactMount._mountImageIntoNode(markup, container, wrapperInstance, shouldReuseMarkup, transaction);
+}
+
+<span class="comment">/**
+ * Batched mount.
+ *
+ * @param {ReactComponent} componentInstance The instance to mount.
+ * @param {DOMElement} container DOM element to mount into.
+ * @param {boolean} shouldReuseMarkup If true, do not insert markup
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">batchedMountComponentIntoNode</span><span class="params">(componentInstance, container, shouldReuseMarkup, context)</span> {</span>
+  <span class="keyword">var</span> transaction = ReactUpdates.ReactReconcileTransaction.getPooled(
+  <span class="comment">/* useCreateElement */</span>
+  !shouldReuseMarkup &amp;&amp; ReactDOMFeatureFlags.useCreateElement);
+  transaction.perform(mountComponentIntoNode, <span class="literal">null</span>, componentInstance, container, transaction, shouldReuseMarkup, context);
+  ReactUpdates.ReactReconcileTransaction.release(transaction);
+}
+
+<span class="comment">/**
+ * Unmounts a component and removes it from the DOM.
+ *
+ * @param {ReactComponent} instance React component instance.
+ * @param {DOMElement} container DOM element to unmount from.
+ * @final
+ * @internal
+ * @see {ReactMount.unmountComponentAtNode}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">unmountComponentFromNode</span><span class="params">(instance, container)</span> {</span>
+  ReactReconciler.unmountComponent(instance);
+
+  <span class="keyword">if</span> (container.nodeType === DOC_NODE_TYPE) {
+    container = container.documentElement;
+  }
+
+  <span class="comment">// http://jsperf.com/emptying-a-node</span>
+  <span class="keyword">while</span> (container.lastChild) {
+    container.removeChild(container.lastChild);
+  }
+}
+
+<span class="comment">/**
+ * True if the supplied DOM node has a direct React-rendered child that is
+ * not a React root element. Useful for warning in `render`,
+ * `unmountComponentAtNode`, etc.
+ *
+ * @param {?DOMElement} node The candidate DOM node.
+ * @return {boolean} True if the DOM element contains a direct child that was
+ * rendered by React but is not a root element.
+ * @internal
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">hasNonRootReactChild</span><span class="params">(container)</span> {</span>
+  <span class="keyword">var</span> rootEl = getReactRootElementInContainer(container);
+  <span class="keyword">if</span> (rootEl) {
+    <span class="keyword">var</span> inst = ReactDOMComponentTree.getInstanceFromNode(rootEl);
+    <span class="keyword">return</span> !!(inst &amp;&amp; inst._nativeParent);
+  }
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">getNativeRootInstanceInContainer</span><span class="params">(container)</span> {</span>
+  <span class="keyword">var</span> rootEl = getReactRootElementInContainer(container);
+  <span class="keyword">var</span> prevNativeInstance = rootEl &amp;&amp; ReactDOMComponentTree.getInstanceFromNode(rootEl);
+  <span class="keyword">return</span> prevNativeInstance &amp;&amp; !prevNativeInstance._nativeParent ? prevNativeInstance : <span class="literal">null</span>;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">getTopLevelWrapperInContainer</span><span class="params">(container)</span> {</span>
+  <span class="keyword">var</span> root = getNativeRootInstanceInContainer(container);
+  <span class="keyword">return</span> root ? root._nativeContainerInfo._topLevelWrapper : <span class="literal">null</span>;
+}
+
+<span class="comment">/**
+ * Temporary (?) hack so that we can store all top-level pending updates on
+ * composites instead of having to worry about different types of components
+ * here.
+ */</span>
+<span class="keyword">var</span> topLevelRootCounter = <span class="number">1</span>;
+<span class="keyword">var</span> TopLevelWrapper = <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+  <span class="keyword">this</span>.rootID = topLevelRootCounter++;
+};
+TopLevelWrapper.prototype.isReactComponent = {};
+<span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+  TopLevelWrapper.displayName = <span class="string">'TopLevelWrapper'</span>;
+}
+TopLevelWrapper.prototype.render = <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+  <span class="comment">// this.props is actually a ReactElement</span>
+  <span class="keyword">return</span> <span class="keyword">this</span>.props;
+};
+
+<span class="comment">/**
+ * Mounting is the process of initializing a React component by creating its
+ * representative DOM elements and inserting them into a supplied `container`.
+ * Any prior content inside `container` is destroyed in the process.
+ *
+ *   ReactMount.render(
+ *     component,
+ *     document.getElementById('container')
+ *   );
+ *
+ *   &lt;div id="container">                   &lt;-- Supplied `container`.
+ *     &lt;div data-reactid=".3">              &lt;-- Rendered reactRoot of React
+ *       // ...                                 component.
+ *     &lt;/div>
+ *   &lt;/div>
+ *
+ * Inside of `container`, the first element rendered is the "reactRoot".
+ */</span>
+<span class="keyword">var</span> ReactMount = {
+
+  TopLevelWrapper: TopLevelWrapper,
+
+  <span class="comment">/**
+   * Used by devtools. The keys are not important.
+   */</span>
+  _instancesByReactRootID: instancesByReactRootID,
+
+  <span class="comment">/**
+   * This is a hook provided to support rendering React components while
+   * ensuring that the apparent scroll position of its `container` does not
+   * change.
+   *
+   * @param {DOMElement} container The `container` being rendered into.
+   * @param {function} renderCallback This must be called once to do the render.
+   */</span>
+  scrollMonitor: <span class="function"><span class="keyword">function</span> <span class="params">(container, renderCallback)</span> {</span>
+    renderCallback();
+  },
+
+  <span class="comment">/**
+   * Take a component that's already mounted into the DOM and replace its props
+   * @param {ReactComponent} prevComponent component instance already in the DOM
+   * @param {ReactElement} nextElement component instance to render
+   * @param {DOMElement} container container to render into
+   * @param {?function} callback function triggered on completion
+   */</span>
+  _updateRootComponent: <span class="function"><span class="keyword">function</span> <span class="params">(prevComponent, nextElement, container, callback)</span> {</span>
+    ReactMount.scrollMonitor(container, <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+      ReactUpdateQueue.enqueueElementInternal(prevComponent, nextElement);
+      <span class="keyword">if</span> (callback) {
+        ReactUpdateQueue.enqueueCallbackInternal(prevComponent, callback);
+      }
+    });
+
+    <span class="keyword">return</span> prevComponent;
+  },
+
+  <span class="comment">/**
+   * Render a new component into the DOM. Hooked by devtools!
+   *
+   * @param {ReactElement} nextElement element to render
+   * @param {DOMElement} container container to render into
+   * @param {boolean} shouldReuseMarkup if we should skip the markup insertion
+   * @return {ReactComponent} nextComponent
+   */</span>
+  _renderNewRootComponent: <span class="function"><span class="keyword">function</span> <span class="params">(nextElement, container, shouldReuseMarkup, context)</span> {</span>
+    <span class="comment">// Various parts of our code (such as ReactCompositeComponent's</span>
+    <span class="comment">// _renderValidatedComponent) assume that calls to render aren't nested;</span>
+    <span class="comment">// verify that that's the case.</span>
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(ReactCurrentOwner.current == <span class="literal">null</span>, <span class="string">'_renderNewRootComponent(): Render methods should be a pure function '</span> + <span class="string">'of props and state; triggering nested component updates from '</span> + <span class="string">'render is not allowed. If necessary, trigger nested updates in '</span> + <span class="string">'componentDidUpdate. Check the render method of %s.'</span>, ReactCurrentOwner.current &amp;&amp; ReactCurrentOwner.current.getName() || <span class="string">'ReactCompositeComponent'</span>) : <span class="literal">undefined</span>;
+
+    !(container &amp;&amp; (container.nodeType === ELEMENT_NODE_TYPE || container.nodeType === DOC_NODE_TYPE || container.nodeType === DOCUMENT_FRAGMENT_NODE_TYPE)) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'_registerComponent(...): Target container is not a DOM element.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+    ReactBrowserEventEmitter.ensureScrollValueMonitoring();
+    <span class="keyword">var</span> componentInstance = instantiateReactComponent(nextElement, <span class="literal">null</span>);
+
+    <span class="comment">// The initial render is synchronous but any updates that happen during</span>
+    <span class="comment">// rendering, in componentWillMount or componentDidMount, will be batched</span>
+    <span class="comment">// according to the current batching strategy.</span>
+
+    ReactUpdates.batchedUpdates(batchedMountComponentIntoNode, componentInstance, container, shouldReuseMarkup, context);
+
+    <span class="keyword">var</span> wrapperID = componentInstance._instance.rootID;
+    instancesByReactRootID[wrapperID] = componentInstance;
+
+    <span class="keyword">return</span> componentInstance;
+  },
+
+  <span class="comment">/**
+   * Renders a React component into the DOM in the supplied `container`.
+   *
+   * If the React component was previously rendered into `container`, this will
+   * perform an update on it and only mutate the DOM as necessary to reflect the
+   * latest React component.
+   *
+   * @param {ReactComponent} parentComponent The conceptual parent of this render tree.
+   * @param {ReactElement} nextElement Component element to render.
+   * @param {DOMElement} container DOM element to render into.
+   * @param {?function} callback function triggered on completion
+   * @return {ReactComponent} Component instance rendered in `container`.
+   */</span>
+  renderSubtreeIntoContainer: <span class="function"><span class="keyword">function</span> <span class="params">(parentComponent, nextElement, container, callback)</span> {</span>
+    !(parentComponent != <span class="literal">null</span> &amp;&amp; parentComponent._reactInternalInstance != <span class="literal">null</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'parentComponent must be a valid React Component'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    <span class="keyword">return</span> ReactMount._renderSubtreeIntoContainer(parentComponent, nextElement, container, callback);
+  },
+
+  _renderSubtreeIntoContainer: <span class="function"><span class="keyword">function</span> <span class="params">(parentComponent, nextElement, container, callback)</span> {</span>
+    !ReactElement.isValidElement(nextElement) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'ReactDOM.render(): Invalid component element.%s'</span>, <span class="keyword">typeof</span> nextElement === <span class="string">'string'</span> ? <span class="string">' Instead of passing an element string, make sure to instantiate '</span> + <span class="string">'it by passing it to React.createElement.'</span> : <span class="keyword">typeof</span> nextElement === <span class="string">'function'</span> ? <span class="string">' Instead of passing a component class, make sure to instantiate '</span> + <span class="string">'it by passing it to React.createElement.'</span> :
+    <span class="comment">// Check if it quacks like an element</span>
+    nextElement != <span class="literal">null</span> &amp;&amp; nextElement.props !== <span class="literal">undefined</span> ? <span class="string">' This may be caused by unintentionally loading two independent '</span> + <span class="string">'copies of React.'</span> : <span class="string">''</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(!container || !container.tagName || container.tagName.toUpperCase() !== <span class="string">'BODY'</span>, <span class="string">'render(): Rendering components directly into document.body is '</span> + <span class="string">'discouraged, since its children are often manipulated by third-party '</span> + <span class="string">'scripts and browser extensions. This may lead to subtle '</span> + <span class="string">'reconciliation issues. Try rendering into a container element created '</span> + <span class="string">'for your app.'</span>) : <span class="literal">undefined</span>;
+
+    <span class="keyword">var</span> nextWrappedElement = <span class="keyword">new</span> ReactElement(TopLevelWrapper, <span class="literal">null</span>, <span class="literal">null</span>, <span class="literal">null</span>, <span class="literal">null</span>, <span class="literal">null</span>, nextElement);
+
+    <span class="keyword">var</span> prevComponent = getTopLevelWrapperInContainer(container);
+
+    <span class="keyword">if</span> (prevComponent) {
+      <span class="keyword">var</span> prevWrappedElement = prevComponent._currentElement;
+      <span class="keyword">var</span> prevElement = prevWrappedElement.props;
+      <span class="keyword">if</span> (shouldUpdateReactComponent(prevElement, nextElement)) {
+        <span class="keyword">var</span> publicInst = prevComponent._renderedComponent.getPublicInstance();
+        <span class="keyword">var</span> updatedCallback = callback &amp;&amp; <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+          callback.call(publicInst);
+        };
+        ReactMount._updateRootComponent(prevComponent, nextWrappedElement, container, updatedCallback);
+        <span class="keyword">return</span> publicInst;
+      } <span class="keyword">else</span> {
+        ReactMount.unmountComponentAtNode(container);
+      }
+    }
+
+    <span class="keyword">var</span> reactRootElement = getReactRootElementInContainer(container);
+    <span class="keyword">var</span> containerHasReactMarkup = reactRootElement &amp;&amp; !!internalGetID(reactRootElement);
+    <span class="keyword">var</span> containerHasNonRootReactChild = hasNonRootReactChild(container);
+
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(!containerHasNonRootReactChild, <span class="string">'render(...): Replacing React-rendered children with a new root '</span> + <span class="string">'component. If you intended to update the children of this node, '</span> + <span class="string">'you should instead have the existing children update their state '</span> + <span class="string">'and render the new components instead of calling ReactDOM.render.'</span>) : <span class="literal">undefined</span>;
+
+      <span class="keyword">if</span> (!containerHasReactMarkup || reactRootElement.nextSibling) {
+        <span class="keyword">var</span> rootElementSibling = reactRootElement;
+        <span class="keyword">while</span> (rootElementSibling) {
+          <span class="keyword">if</span> (internalGetID(rootElementSibling)) {
+            process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'render(): Target node has markup rendered by React, but there '</span> + <span class="string">'are unrelated nodes as well. This is most commonly caused by '</span> + <span class="string">'white-space inserted around server-rendered markup.'</span>) : <span class="literal">undefined</span>;
+            <span class="keyword">break</span>;
+          }
+          rootElementSibling = rootElementSibling.nextSibling;
+        }
+      }
+    }
+
+    <span class="keyword">var</span> shouldReuseMarkup = containerHasReactMarkup &amp;&amp; !prevComponent &amp;&amp; !containerHasNonRootReactChild;
+    <span class="keyword">var</span> component = ReactMount._renderNewRootComponent(nextWrappedElement, container, shouldReuseMarkup, parentComponent != <span class="literal">null</span> ? parentComponent._reactInternalInstance._processChildContext(parentComponent._reactInternalInstance._context) : emptyObject)._renderedComponent.getPublicInstance();
+    <span class="keyword">if</span> (callback) {
+      callback.call(component);
+    }
+    <span class="keyword">return</span> component;
+  },
+
+  <span class="comment">/**
+   * Renders a React component into the DOM in the supplied `container`.
+   *
+   * If the React component was previously rendered into `container`, this will
+   * perform an update on it and only mutate the DOM as necessary to reflect the
+   * latest React component.
+   *
+   * @param {ReactElement} nextElement Component element to render.
+   * @param {DOMElement} container DOM element to render into.
+   * @param {?function} callback function triggered on completion
+   * @return {ReactComponent} Component instance rendered in `container`.
+   */</span>
+  render: <span class="function"><span class="keyword">function</span> <span class="params">(nextElement, container, callback)</span> {</span>
+    <span class="keyword">return</span> ReactMount._renderSubtreeIntoContainer(<span class="literal">null</span>, nextElement, container, callback);
+  },
+
+  <span class="comment">/**
+   * Unmounts and destroys the React component rendered in the `container`.
+   *
+   * @param {DOMElement} container DOM element containing a React component.
+   * @return {boolean} True if a component was found in and unmounted from
+   *                   `container`
+   */</span>
+  unmountComponentAtNode: <span class="function"><span class="keyword">function</span> <span class="params">(container)</span> {</span>
+    <span class="comment">// Various parts of our code (such as ReactCompositeComponent's</span>
+    <span class="comment">// _renderValidatedComponent) assume that calls to render aren't nested;</span>
+    <span class="comment">// verify that that's the case. (Strictly speaking, unmounting won't cause a</span>
+    <span class="comment">// render but we still don't expect to be in a render call here.)</span>
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(ReactCurrentOwner.current == <span class="literal">null</span>, <span class="string">'unmountComponentAtNode(): Render methods should be a pure function '</span> + <span class="string">'of props and state; triggering nested component updates from render '</span> + <span class="string">'is not allowed. If necessary, trigger nested updates in '</span> + <span class="string">'componentDidUpdate. Check the render method of %s.'</span>, ReactCurrentOwner.current &amp;&amp; ReactCurrentOwner.current.getName() || <span class="string">'ReactCompositeComponent'</span>) : <span class="literal">undefined</span>;
+
+    !(container &amp;&amp; (container.nodeType === ELEMENT_NODE_TYPE || container.nodeType === DOC_NODE_TYPE || container.nodeType === DOCUMENT_FRAGMENT_NODE_TYPE)) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'unmountComponentAtNode(...): Target container is not a DOM element.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+    <span class="keyword">var</span> prevComponent = getTopLevelWrapperInContainer(container);
+    <span class="keyword">if</span> (!prevComponent) {
+      <span class="comment">// Check if the node being unmounted was rendered by React, but isn't a</span>
+      <span class="comment">// root node.</span>
+      <span class="keyword">var</span> containerHasNonRootReactChild = hasNonRootReactChild(container);
+
+      <span class="comment">// Check if the container itself is a React root node.</span>
+      <span class="keyword">var</span> isContainerReactRoot = container.nodeType === <span class="number">1</span> &amp;&amp; container.hasAttribute(ROOT_ATTR_NAME);
+
+      <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+        process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(!containerHasNonRootReactChild, <span class="string">'unmountComponentAtNode(): The node you\'re attempting to unmount '</span> + <span class="string">'was rendered by React and is not a top-level container. %s'</span>, isContainerReactRoot ? <span class="string">'You may have accidentally passed in a React root node instead '</span> + <span class="string">'of its container.'</span> : <span class="string">'Instead, have the parent component update its state and '</span> + <span class="string">'rerender in order to remove this component.'</span>) : <span class="literal">undefined</span>;
+      }
+
+      <span class="keyword">return</span> <span class="literal">false</span>;
+    }
+    <span class="keyword">delete</span> instancesByReactRootID[prevComponent._instance.rootID];
+    ReactUpdates.batchedUpdates(unmountComponentFromNode, prevComponent, container);
+    <span class="keyword">return</span> <span class="literal">true</span>;
+  },
+
+  _mountImageIntoNode: <span class="function"><span class="keyword">function</span> <span class="params">(markup, container, instance, shouldReuseMarkup, transaction)</span> {</span>
+    !(container &amp;&amp; (container.nodeType === ELEMENT_NODE_TYPE || container.nodeType === DOC_NODE_TYPE || container.nodeType === DOCUMENT_FRAGMENT_NODE_TYPE)) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'mountComponentIntoNode(...): Target container is not valid.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+    <span class="keyword">if</span> (shouldReuseMarkup) {
+      <span class="keyword">var</span> rootElement = getReactRootElementInContainer(container);
+      <span class="keyword">if</span> (ReactMarkupChecksum.canReuseMarkup(markup, rootElement)) {
+        ReactDOMComponentTree.precacheNode(instance, rootElement);
+        <span class="keyword">return</span>;
+      } <span class="keyword">else</span> {
+        <span class="keyword">var</span> checksum = rootElement.getAttribute(ReactMarkupChecksum.CHECKSUM_ATTR_NAME);
+        rootElement.removeAttribute(ReactMarkupChecksum.CHECKSUM_ATTR_NAME);
+
+        <span class="keyword">var</span> rootMarkup = rootElement.outerHTML;
+        rootElement.setAttribute(ReactMarkupChecksum.CHECKSUM_ATTR_NAME, checksum);
+
+        <span class="keyword">var</span> normalizedMarkup = markup;
+        <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+          <span class="comment">// because rootMarkup is retrieved from the DOM, various normalizations</span>
+          <span class="comment">// will have occurred which will not be present in `markup`. Here,</span>
+          <span class="comment">// insert markup into a &lt;div> or &lt;iframe> depending on the container</span>
+          <span class="comment">// type to perform the same normalizations before comparing.</span>
+          <span class="keyword">var</span> normalizer;
+          <span class="keyword">if</span> (container.nodeType === ELEMENT_NODE_TYPE) {
+            normalizer = document.createElement(<span class="string">'div'</span>);
+            normalizer.innerHTML = markup;
+            normalizedMarkup = normalizer.innerHTML;
+          } <span class="keyword">else</span> {
+            normalizer = document.createElement(<span class="string">'iframe'</span>);
+            document.body.appendChild(normalizer);
+            normalizer.contentDocument.write(markup);
+            normalizedMarkup = normalizer.contentDocument.documentElement.outerHTML;
+            document.body.removeChild(normalizer);
+          }
+        }
+
+        <span class="keyword">var</span> diffIndex = firstDifferenceIndex(normalizedMarkup, rootMarkup);
+        <span class="keyword">var</span> difference = <span class="string">' (client) '</span> + normalizedMarkup.substring(diffIndex - <span class="number">20</span>, diffIndex + <span class="number">20</span>) + <span class="string">'\n (server) '</span> + rootMarkup.substring(diffIndex - <span class="number">20</span>, diffIndex + <span class="number">20</span>);
+
+        !(container.nodeType !== DOC_NODE_TYPE) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'You\'re trying to render a component to the document using '</span> + <span class="string">'server rendering but the checksum was invalid. This usually '</span> + <span class="string">'means you rendered a different component type or props on '</span> + <span class="string">'the client from the one on the server, or your render() '</span> + <span class="string">'methods are impure. React cannot handle this case due to '</span> + <span class="string">'cross-browser quirks by rendering at the document root. You '</span> + <span class="string">'should look for environment dependent code in your components '</span> + <span class="string">'and ensure the props are the same client and server side:\n%s'</span>, difference) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+        <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+          process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'React attempted to reuse markup in a container but the '</span> + <span class="string">'checksum was invalid. This generally means that you are '</span> + <span class="string">'using server rendering and the markup generated on the '</span> + <span class="string">'server was not what the client was expecting. React injected '</span> + <span class="string">'new markup to compensate which works but you have lost many '</span> + <span class="string">'of the benefits of server rendering. Instead, figure out '</span> + <span class="string">'why the markup being generated is different on the client '</span> + <span class="string">'or server:\n%s'</span>, difference) : <span class="literal">undefined</span>;
+        }
+      }
+    }
+
+    !(container.nodeType !== DOC_NODE_TYPE) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'You\'re trying to render a component to the document but '</span> + <span class="string">'you didn\'t use server rendering. We can\'t do this '</span> + <span class="string">'without using server rendering due to cross-browser quirks. '</span> + <span class="string">'See ReactDOMServer.renderToString() for server rendering.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+    <span class="keyword">if</span> (transaction.useCreateElement) {
+      <span class="keyword">while</span> (container.lastChild) {
+        container.removeChild(container.lastChild);
+      }
+      DOMLazyTree.insertTreeBefore(container, markup, <span class="literal">null</span>);
+    } <span class="keyword">else</span> {
+      setInnerHTML(container, markup);
+      ReactDOMComponentTree.precacheNode(instance, container.firstChild);
+    }
+  }
+};
+
+ReactPerf.measureMethods(ReactMount, <span class="string">'ReactMount'</span>, {
+  _renderNewRootComponent: <span class="string">'_renderNewRootComponent'</span>,
+  _mountImageIntoNode: <span class="string">'_mountImageIntoNode'</span>
+});
+
+module.exports = ReactMount;</code></pre>

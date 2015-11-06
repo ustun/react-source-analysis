@@ -1,0 +1,38 @@
+<h1>analyze_modules.js</h1>
+<pre><code class="lang-js"><span class="keyword">var</span> glob = require(<span class="string">'glob'</span>);
+<span class="keyword">var</span> fs = require(<span class="string">'fs'</span>);
+<span class="keyword">var</span> getPublicMembersOfFile = require(<span class="string">'./analyze_public_members'</span>);
+<span class="keyword">var</span> findRequiredModules = require(<span class="string">'./find_required_modules'</span>);
+
+
+<span class="keyword">const</span> fileCriteria = (fileName) => {
+  <span class="keyword">const</span> excludedFiles = [<span class="string">'webcomponents.js'</span>, <span class="string">'build/main.js'</span>, <span class="string">'hello_react.js'</span>];
+  <span class="keyword">if</span> (excludedFiles.indexOf(fileName) > -<span class="number">1</span> || fileName.index) {
+  <span class="keyword">return</span> <span class="literal">false</span>;
+} <span class="keyword">else</span> {
+  <span class="keyword">return</span> <span class="literal">true</span>;
+}
+};
+
+<span class="keyword">const</span> prettyPrint = (data) => {
+  console.log(JSON.stringify(data, <span class="literal">null</span>, <span class="number">4</span>));
+};
+
+<span class="keyword">const</span> prettyWriteFile = (fileName, data) => {
+  fs.writeFileSync(fileName, JSON.stringify(data, <span class="literal">null</span>, <span class="number">4</span>));
+};
+
+<span class="comment">// options is optional</span>
+glob(<span class="string">"**/*.js"</span>, {ignore: [<span class="string">'node_modules/**/*'</span>]}, <span class="function"><span class="keyword">function</span> <span class="params">(er, files)</span> {</span>
+  console.log(files);
+  <span class="keyword">const</span> publicMembers = files.filter(fileCriteria).map(getPublicMembersOfFile);
+  prettyPrint(publicMembers);
+  prettyWriteFile(<span class="string">'output/public_members.json'</span>, publicMembers);
+
+  <span class="keyword">const</span> requiredModules = files.filter(fileCriteria).map(findRequiredModules);
+  prettyPrint(requiredModules);
+  prettyWriteFile(<span class="string">'output/required_modules.json'</span>, requiredModules);
+
+
+});
+</code></pre>

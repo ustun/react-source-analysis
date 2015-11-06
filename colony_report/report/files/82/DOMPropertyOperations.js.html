@@ -1,0 +1,239 @@
+<h1>DOMPropertyOperations.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule DOMPropertyOperations
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> DOMProperty = require(<span class="string">'./DOMProperty'</span>);
+<span class="keyword">var</span> EventPluginRegistry = require(<span class="string">'./EventPluginRegistry'</span>);
+<span class="keyword">var</span> ReactPerf = require(<span class="string">'./ReactPerf'</span>);
+
+<span class="keyword">var</span> quoteAttributeValueForBrowser = require(<span class="string">'./quoteAttributeValueForBrowser'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="comment">// Simplified subset</span>
+<span class="keyword">var</span> VALID_ATTRIBUTE_NAME_REGEX = <span class="regexp">/^[a-zA-Z_][\w\.\-]*$/</span>;
+<span class="keyword">var</span> illegalAttributeNameCache = {};
+<span class="keyword">var</span> validatedAttributeNameCache = {};
+
+<span class="function"><span class="keyword">function</span> <span class="title">isAttributeNameSafe</span><span class="params">(attributeName)</span> {</span>
+  <span class="keyword">if</span> (validatedAttributeNameCache.hasOwnProperty(attributeName)) {
+    <span class="keyword">return</span> <span class="literal">true</span>;
+  }
+  <span class="keyword">if</span> (illegalAttributeNameCache.hasOwnProperty(attributeName)) {
+    <span class="keyword">return</span> <span class="literal">false</span>;
+  }
+  <span class="keyword">if</span> (VALID_ATTRIBUTE_NAME_REGEX.test(attributeName)) {
+    validatedAttributeNameCache[attributeName] = <span class="literal">true</span>;
+    <span class="keyword">return</span> <span class="literal">true</span>;
+  }
+  illegalAttributeNameCache[attributeName] = <span class="literal">true</span>;
+  process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'Invalid attribute name: `%s`'</span>, attributeName) : <span class="literal">undefined</span>;
+  <span class="keyword">return</span> <span class="literal">false</span>;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">shouldIgnoreValue</span><span class="params">(propertyInfo, value)</span> {</span>
+  <span class="keyword">return</span> value == <span class="literal">null</span> || propertyInfo.hasBooleanValue &amp;&amp; !value || propertyInfo.hasNumericValue &amp;&amp; isNaN(value) || propertyInfo.hasPositiveNumericValue &amp;&amp; value &lt; <span class="number">1</span> || propertyInfo.hasOverloadedBooleanValue &amp;&amp; value === <span class="literal">false</span>;
+}
+
+<span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+  <span class="keyword">var</span> reactProps = {
+    children: <span class="literal">true</span>,
+    dangerouslySetInnerHTML: <span class="literal">true</span>,
+    key: <span class="literal">true</span>,
+    ref: <span class="literal">true</span>
+  };
+  <span class="keyword">var</span> warnedProperties = {};
+
+  <span class="keyword">var</span> warnUnknownProperty = <span class="function"><span class="keyword">function</span> <span class="params">(name)</span> {</span>
+    <span class="keyword">if</span> (reactProps.hasOwnProperty(name) &amp;&amp; reactProps[name] || warnedProperties.hasOwnProperty(name) &amp;&amp; warnedProperties[name]) {
+      <span class="keyword">return</span>;
+    }
+
+    warnedProperties[name] = <span class="literal">true</span>;
+    <span class="keyword">var</span> lowerCasedName = name.toLowerCase();
+
+    <span class="comment">// data-* attributes should be lowercase; suggest the lowercase version</span>
+    <span class="keyword">var</span> standardName = DOMProperty.isCustomAttribute(lowerCasedName) ? lowerCasedName : DOMProperty.getPossibleStandardName.hasOwnProperty(lowerCasedName) ? DOMProperty.getPossibleStandardName[lowerCasedName] : <span class="literal">null</span>;
+
+    <span class="comment">// For now, only warn when we have a suggested correction. This prevents</span>
+    <span class="comment">// logging too much when using transferPropsTo.</span>
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(standardName == <span class="literal">null</span>, <span class="string">'Unknown DOM property %s. Did you mean %s?'</span>, name, standardName) : <span class="literal">undefined</span>;
+
+    <span class="keyword">var</span> registrationName = EventPluginRegistry.possibleRegistrationNames.hasOwnProperty(lowerCasedName) ? EventPluginRegistry.possibleRegistrationNames[lowerCasedName] : <span class="literal">null</span>;
+
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(registrationName == <span class="literal">null</span>, <span class="string">'Unknown event handler property %s. Did you mean `%s`?'</span>, name, registrationName) : <span class="literal">undefined</span>;
+  };
+}
+
+<span class="comment">/**
+ * Operations for dealing with DOM properties.
+ */</span>
+<span class="keyword">var</span> DOMPropertyOperations = {
+
+  <span class="comment">/**
+   * Creates markup for the ID property.
+   *
+   * @param {string} id Unescaped ID.
+   * @return {string} Markup string.
+   */</span>
+  createMarkupForID: <span class="function"><span class="keyword">function</span> <span class="params">(id)</span> {</span>
+    <span class="keyword">return</span> DOMProperty.ID_ATTRIBUTE_NAME + <span class="string">'='</span> + quoteAttributeValueForBrowser(id);
+  },
+
+  setAttributeForID: <span class="function"><span class="keyword">function</span> <span class="params">(node, id)</span> {</span>
+    node.setAttribute(DOMProperty.ID_ATTRIBUTE_NAME, id);
+  },
+
+  createMarkupForRoot: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> DOMProperty.ROOT_ATTRIBUTE_NAME + <span class="string">'=""'</span>;
+  },
+
+  setAttributeForRoot: <span class="function"><span class="keyword">function</span> <span class="params">(node)</span> {</span>
+    node.setAttribute(DOMProperty.ROOT_ATTRIBUTE_NAME, <span class="string">''</span>);
+  },
+
+  <span class="comment">/**
+   * Creates markup for a property.
+   *
+   * @param {string} name
+   * @param {*} value
+   * @return {?string} Markup string, or null if the property was invalid.
+   */</span>
+  createMarkupForProperty: <span class="function"><span class="keyword">function</span> <span class="params">(name, value)</span> {</span>
+    <span class="keyword">var</span> propertyInfo = DOMProperty.properties.hasOwnProperty(name) ? DOMProperty.properties[name] : <span class="literal">null</span>;
+    <span class="keyword">if</span> (propertyInfo) {
+      <span class="keyword">if</span> (shouldIgnoreValue(propertyInfo, value)) {
+        <span class="keyword">return</span> <span class="string">''</span>;
+      }
+      <span class="keyword">var</span> attributeName = propertyInfo.attributeName;
+      <span class="keyword">if</span> (propertyInfo.hasBooleanValue || propertyInfo.hasOverloadedBooleanValue &amp;&amp; value === <span class="literal">true</span>) {
+        <span class="keyword">return</span> attributeName + <span class="string">'=""'</span>;
+      }
+      <span class="keyword">return</span> attributeName + <span class="string">'='</span> + quoteAttributeValueForBrowser(value);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (DOMProperty.isCustomAttribute(name)) {
+      <span class="keyword">if</span> (value == <span class="literal">null</span>) {
+        <span class="keyword">return</span> <span class="string">''</span>;
+      }
+      <span class="keyword">return</span> name + <span class="string">'='</span> + quoteAttributeValueForBrowser(value);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      warnUnknownProperty(name);
+    }
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  },
+
+  <span class="comment">/**
+   * Creates markup for a custom property.
+   *
+   * @param {string} name
+   * @param {*} value
+   * @return {string} Markup string, or empty string if the property was invalid.
+   */</span>
+  createMarkupForCustomAttribute: <span class="function"><span class="keyword">function</span> <span class="params">(name, value)</span> {</span>
+    <span class="keyword">if</span> (!isAttributeNameSafe(name) || value == <span class="literal">null</span>) {
+      <span class="keyword">return</span> <span class="string">''</span>;
+    }
+    <span class="keyword">return</span> name + <span class="string">'='</span> + quoteAttributeValueForBrowser(value);
+  },
+
+  <span class="comment">/**
+   * Sets the value for a property on a node.
+   *
+   * @param {DOMElement} node
+   * @param {string} name
+   * @param {*} value
+   */</span>
+  setValueForProperty: <span class="function"><span class="keyword">function</span> <span class="params">(node, name, value)</span> {</span>
+    <span class="keyword">var</span> propertyInfo = DOMProperty.properties.hasOwnProperty(name) ? DOMProperty.properties[name] : <span class="literal">null</span>;
+    <span class="keyword">if</span> (propertyInfo) {
+      <span class="keyword">var</span> mutationMethod = propertyInfo.mutationMethod;
+      <span class="keyword">if</span> (mutationMethod) {
+        mutationMethod(node, value);
+      } <span class="keyword">else</span> <span class="keyword">if</span> (shouldIgnoreValue(propertyInfo, value)) {
+        <span class="keyword">this</span>.deleteValueForProperty(node, name);
+      } <span class="keyword">else</span> <span class="keyword">if</span> (propertyInfo.mustUseAttribute) {
+        <span class="keyword">var</span> attributeName = propertyInfo.attributeName;
+        <span class="keyword">var</span> namespace = propertyInfo.attributeNamespace;
+        <span class="comment">// `setAttribute` with objects becomes only `[object]` in IE8/9,</span>
+        <span class="comment">// ('' + value) makes it output the correct toString()-value.</span>
+        <span class="keyword">if</span> (namespace) {
+          node.setAttributeNS(namespace, attributeName, <span class="string">''</span> + value);
+        } <span class="keyword">else</span> <span class="keyword">if</span> (propertyInfo.hasBooleanValue || propertyInfo.hasOverloadedBooleanValue &amp;&amp; value === <span class="literal">true</span>) {
+          node.setAttribute(attributeName, <span class="string">''</span>);
+        } <span class="keyword">else</span> {
+          node.setAttribute(attributeName, <span class="string">''</span> + value);
+        }
+      } <span class="keyword">else</span> {
+        <span class="keyword">var</span> propName = propertyInfo.propertyName;
+        <span class="comment">// Must explicitly cast values for HAS_SIDE_EFFECTS-properties to the</span>
+        <span class="comment">// property type before comparing; only `value` does and is string.</span>
+        <span class="keyword">if</span> (!propertyInfo.hasSideEffects || <span class="string">''</span> + node[propName] !== <span class="string">''</span> + value) {
+          <span class="comment">// Contrary to `setAttribute`, object properties are properly</span>
+          <span class="comment">// `toString`ed by IE8/9.</span>
+          node[propName] = value;
+        }
+      }
+    } <span class="keyword">else</span> <span class="keyword">if</span> (DOMProperty.isCustomAttribute(name)) {
+      DOMPropertyOperations.setValueForAttribute(node, name, value);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      warnUnknownProperty(name);
+    }
+  },
+
+  setValueForAttribute: <span class="function"><span class="keyword">function</span> <span class="params">(node, name, value)</span> {</span>
+    <span class="keyword">if</span> (!isAttributeNameSafe(name)) {
+      <span class="keyword">return</span>;
+    }
+    <span class="keyword">if</span> (value == <span class="literal">null</span>) {
+      node.removeAttribute(name);
+    } <span class="keyword">else</span> {
+      node.setAttribute(name, <span class="string">''</span> + value);
+    }
+  },
+
+  <span class="comment">/**
+   * Deletes the value for a property on a node.
+   *
+   * @param {DOMElement} node
+   * @param {string} name
+   */</span>
+  deleteValueForProperty: <span class="function"><span class="keyword">function</span> <span class="params">(node, name)</span> {</span>
+    <span class="keyword">var</span> propertyInfo = DOMProperty.properties.hasOwnProperty(name) ? DOMProperty.properties[name] : <span class="literal">null</span>;
+    <span class="keyword">if</span> (propertyInfo) {
+      <span class="keyword">var</span> mutationMethod = propertyInfo.mutationMethod;
+      <span class="keyword">if</span> (mutationMethod) {
+        mutationMethod(node, <span class="literal">undefined</span>);
+      } <span class="keyword">else</span> <span class="keyword">if</span> (propertyInfo.mustUseAttribute) {
+        node.removeAttribute(propertyInfo.attributeName);
+      } <span class="keyword">else</span> {
+        <span class="keyword">var</span> propName = propertyInfo.propertyName;
+        <span class="keyword">var</span> defaultValue = DOMProperty.getDefaultValueForProperty(node.nodeName, propName);
+        <span class="keyword">if</span> (!propertyInfo.hasSideEffects || <span class="string">''</span> + node[propName] !== defaultValue) {
+          node[propName] = defaultValue;
+        }
+      }
+    } <span class="keyword">else</span> <span class="keyword">if</span> (DOMProperty.isCustomAttribute(name)) {
+      node.removeAttribute(name);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      warnUnknownProperty(name);
+    }
+  }
+
+};
+
+ReactPerf.measureMethods(DOMPropertyOperations, <span class="string">'DOMPropertyOperations'</span>, {
+  setValueForProperty: <span class="string">'setValueForProperty'</span>,
+  setValueForAttribute: <span class="string">'setValueForAttribute'</span>,
+  deleteValueForProperty: <span class="string">'deleteValueForProperty'</span>
+});
+
+module.exports = DOMPropertyOperations;</code></pre>

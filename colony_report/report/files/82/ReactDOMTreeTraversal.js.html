@@ -1,0 +1,135 @@
+<h1>ReactDOMTreeTraversal.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDOMTreeTraversal
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+
+<span class="comment">/**
+ * Return the lowest common ancestor of A and B, or null if they are in
+ * different trees.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getLowestCommonAncestor</span><span class="params">(instA, instB)</span> {</span>
+  !(<span class="string">'_nativeNode'</span> <span class="keyword">in</span> instA) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'getNodeFromInstance: Invalid argument.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  !(<span class="string">'_nativeNode'</span> <span class="keyword">in</span> instB) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'getNodeFromInstance: Invalid argument.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+  <span class="keyword">var</span> depthA = <span class="number">0</span>;
+  <span class="keyword">for</span> (<span class="keyword">var</span> tempA = instA; tempA; tempA = tempA._nativeParent) {
+    depthA++;
+  }
+  <span class="keyword">var</span> depthB = <span class="number">0</span>;
+  <span class="keyword">for</span> (<span class="keyword">var</span> tempB = instB; tempB; tempB = tempB._nativeParent) {
+    depthB++;
+  }
+
+  <span class="comment">// If A is deeper, crawl up.</span>
+  <span class="keyword">while</span> (depthA - depthB > <span class="number">0</span>) {
+    instA = instA._nativeParent;
+    depthA--;
+  }
+
+  <span class="comment">// If B is deeper, crawl up.</span>
+  <span class="keyword">while</span> (depthB - depthA > <span class="number">0</span>) {
+    instB = instB._nativeParent;
+    depthB--;
+  }
+
+  <span class="comment">// Walk in lockstep until we find a match.</span>
+  <span class="keyword">var</span> depth = depthA;
+  <span class="keyword">while</span> (depth--) {
+    <span class="keyword">if</span> (instA === instB) {
+      <span class="keyword">return</span> instA;
+    }
+    instA = instA._nativeParent;
+    instB = instB._nativeParent;
+  }
+  <span class="keyword">return</span> <span class="literal">null</span>;
+}
+
+<span class="comment">/**
+ * Return if A is an ancestor of B.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">isAncestor</span><span class="params">(instA, instB)</span> {</span>
+  !(<span class="string">'_nativeNode'</span> <span class="keyword">in</span> instA) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'isAncestor: Invalid argument.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  !(<span class="string">'_nativeNode'</span> <span class="keyword">in</span> instB) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'isAncestor: Invalid argument.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+  <span class="keyword">while</span> (instB) {
+    <span class="keyword">if</span> (instB === instA) {
+      <span class="keyword">return</span> <span class="literal">true</span>;
+    }
+    instB = instB._nativeParent;
+  }
+  <span class="keyword">return</span> <span class="literal">false</span>;
+}
+
+<span class="comment">/**
+ * Return the parent instance of the passed-in instance.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getParentInstance</span><span class="params">(inst)</span> {</span>
+  !(<span class="string">'_nativeNode'</span> <span class="keyword">in</span> inst) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'getParentInstance: Invalid argument.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+  <span class="keyword">return</span> inst._nativeParent;
+}
+
+<span class="comment">/**
+ * Simulates the traversal of a two-phase, capture/bubble event dispatch.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">traverseTwoPhase</span><span class="params">(inst, fn, arg)</span> {</span>
+  <span class="keyword">var</span> path = [];
+  <span class="keyword">while</span> (inst) {
+    path.push(inst);
+    inst = inst._nativeParent;
+  }
+  <span class="keyword">var</span> i;
+  <span class="keyword">for</span> (i = path.length; i-- > <span class="number">0</span>;) {
+    fn(path[i], <span class="literal">false</span>, arg);
+  }
+  <span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; path.length; i++) {
+    fn(path[i], <span class="literal">true</span>, arg);
+  }
+}
+
+<span class="comment">/**
+ * Traverses the ID hierarchy and invokes the supplied `cb` on any IDs that
+ * should would receive a `mouseEnter` or `mouseLeave` event.
+ *
+ * Does not invoke the callback on the nearest common ancestor because nothing
+ * "entered" or "left" that element.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">traverseEnterLeave</span><span class="params">(from, to, fn, argFrom, argTo)</span> {</span>
+  <span class="keyword">var</span> common = from &amp;&amp; to ? getLowestCommonAncestor(from, to) : <span class="literal">null</span>;
+  <span class="keyword">var</span> pathFrom = [];
+  <span class="keyword">while</span> (from &amp;&amp; from !== common) {
+    pathFrom.push(from);
+    from = from._nativeParent;
+  }
+  <span class="keyword">var</span> pathTo = [];
+  <span class="keyword">while</span> (to &amp;&amp; to !== common) {
+    pathTo.push(to);
+    to = to._nativeParent;
+  }
+  <span class="keyword">var</span> i;
+  <span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; pathFrom.length; i++) {
+    fn(pathFrom[i], <span class="literal">true</span>, argFrom);
+  }
+  <span class="keyword">for</span> (i = pathTo.length; i-- > <span class="number">0</span>;) {
+    fn(pathTo[i], <span class="literal">false</span>, argTo);
+  }
+}
+
+module.exports = {
+  isAncestor: isAncestor,
+  getLowestCommonAncestor: getLowestCommonAncestor,
+  getParentInstance: getParentInstance,
+  traverseTwoPhase: traverseTwoPhase,
+  traverseEnterLeave: traverseEnterLeave
+};</code></pre>

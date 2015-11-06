@@ -1,0 +1,178 @@
+<h1>ReactDOMFactories.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDOMFactories
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactElement = require(<span class="string">'./ReactElement'</span>);
+<span class="keyword">var</span> ReactElementValidator = require(<span class="string">'./ReactElementValidator'</span>);
+
+<span class="keyword">var</span> mapObject = require(<span class="string">'fbjs/lib/mapObject'</span>);
+
+<span class="comment">/**
+ * Create a factory that creates HTML tag elements.
+ *
+ * @param {string} tag Tag name (e.g. `div`).
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">createDOMFactory</span><span class="params">(tag)</span> {</span>
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    <span class="keyword">return</span> ReactElementValidator.createFactory(tag);
+  }
+  <span class="keyword">return</span> ReactElement.createFactory(tag);
+}
+
+<span class="comment">/**
+ * Creates a mapping from supported HTML tags to `ReactDOMComponent` classes.
+ * This is also accessible via `React.DOM`.
+ *
+ * @public
+ */</span>
+<span class="keyword">var</span> ReactDOMFactories = mapObject({
+  a: <span class="string">'a'</span>,
+  abbr: <span class="string">'abbr'</span>,
+  address: <span class="string">'address'</span>,
+  area: <span class="string">'area'</span>,
+  article: <span class="string">'article'</span>,
+  aside: <span class="string">'aside'</span>,
+  audio: <span class="string">'audio'</span>,
+  b: <span class="string">'b'</span>,
+  base: <span class="string">'base'</span>,
+  bdi: <span class="string">'bdi'</span>,
+  bdo: <span class="string">'bdo'</span>,
+  big: <span class="string">'big'</span>,
+  blockquote: <span class="string">'blockquote'</span>,
+  body: <span class="string">'body'</span>,
+  br: <span class="string">'br'</span>,
+  button: <span class="string">'button'</span>,
+  canvas: <span class="string">'canvas'</span>,
+  caption: <span class="string">'caption'</span>,
+  cite: <span class="string">'cite'</span>,
+  code: <span class="string">'code'</span>,
+  col: <span class="string">'col'</span>,
+  colgroup: <span class="string">'colgroup'</span>,
+  data: <span class="string">'data'</span>,
+  datalist: <span class="string">'datalist'</span>,
+  dd: <span class="string">'dd'</span>,
+  del: <span class="string">'del'</span>,
+  details: <span class="string">'details'</span>,
+  dfn: <span class="string">'dfn'</span>,
+  dialog: <span class="string">'dialog'</span>,
+  div: <span class="string">'div'</span>,
+  dl: <span class="string">'dl'</span>,
+  dt: <span class="string">'dt'</span>,
+  em: <span class="string">'em'</span>,
+  embed: <span class="string">'embed'</span>,
+  fieldset: <span class="string">'fieldset'</span>,
+  figcaption: <span class="string">'figcaption'</span>,
+  figure: <span class="string">'figure'</span>,
+  footer: <span class="string">'footer'</span>,
+  form: <span class="string">'form'</span>,
+  h1: <span class="string">'h1'</span>,
+  h2: <span class="string">'h2'</span>,
+  h3: <span class="string">'h3'</span>,
+  h4: <span class="string">'h4'</span>,
+  h5: <span class="string">'h5'</span>,
+  h6: <span class="string">'h6'</span>,
+  head: <span class="string">'head'</span>,
+  header: <span class="string">'header'</span>,
+  hgroup: <span class="string">'hgroup'</span>,
+  hr: <span class="string">'hr'</span>,
+  html: <span class="string">'html'</span>,
+  i: <span class="string">'i'</span>,
+  iframe: <span class="string">'iframe'</span>,
+  img: <span class="string">'img'</span>,
+  input: <span class="string">'input'</span>,
+  ins: <span class="string">'ins'</span>,
+  kbd: <span class="string">'kbd'</span>,
+  keygen: <span class="string">'keygen'</span>,
+  label: <span class="string">'label'</span>,
+  legend: <span class="string">'legend'</span>,
+  li: <span class="string">'li'</span>,
+  link: <span class="string">'link'</span>,
+  main: <span class="string">'main'</span>,
+  map: <span class="string">'map'</span>,
+  mark: <span class="string">'mark'</span>,
+  menu: <span class="string">'menu'</span>,
+  menuitem: <span class="string">'menuitem'</span>,
+  meta: <span class="string">'meta'</span>,
+  meter: <span class="string">'meter'</span>,
+  nav: <span class="string">'nav'</span>,
+  noscript: <span class="string">'noscript'</span>,
+  object: <span class="string">'object'</span>,
+  ol: <span class="string">'ol'</span>,
+  optgroup: <span class="string">'optgroup'</span>,
+  option: <span class="string">'option'</span>,
+  output: <span class="string">'output'</span>,
+  p: <span class="string">'p'</span>,
+  param: <span class="string">'param'</span>,
+  picture: <span class="string">'picture'</span>,
+  pre: <span class="string">'pre'</span>,
+  progress: <span class="string">'progress'</span>,
+  q: <span class="string">'q'</span>,
+  rp: <span class="string">'rp'</span>,
+  rt: <span class="string">'rt'</span>,
+  ruby: <span class="string">'ruby'</span>,
+  s: <span class="string">'s'</span>,
+  samp: <span class="string">'samp'</span>,
+  script: <span class="string">'script'</span>,
+  section: <span class="string">'section'</span>,
+  select: <span class="string">'select'</span>,
+  small: <span class="string">'small'</span>,
+  source: <span class="string">'source'</span>,
+  span: <span class="string">'span'</span>,
+  strong: <span class="string">'strong'</span>,
+  style: <span class="string">'style'</span>,
+  sub: <span class="string">'sub'</span>,
+  summary: <span class="string">'summary'</span>,
+  sup: <span class="string">'sup'</span>,
+  table: <span class="string">'table'</span>,
+  tbody: <span class="string">'tbody'</span>,
+  td: <span class="string">'td'</span>,
+  textarea: <span class="string">'textarea'</span>,
+  tfoot: <span class="string">'tfoot'</span>,
+  th: <span class="string">'th'</span>,
+  thead: <span class="string">'thead'</span>,
+  time: <span class="string">'time'</span>,
+  title: <span class="string">'title'</span>,
+  tr: <span class="string">'tr'</span>,
+  track: <span class="string">'track'</span>,
+  u: <span class="string">'u'</span>,
+  ul: <span class="string">'ul'</span>,
+  <span class="string">'var'</span>: <span class="string">'var'</span>,
+  video: <span class="string">'video'</span>,
+  wbr: <span class="string">'wbr'</span>,
+
+  <span class="comment">// SVG</span>
+  circle: <span class="string">'circle'</span>,
+  clipPath: <span class="string">'clipPath'</span>,
+  defs: <span class="string">'defs'</span>,
+  ellipse: <span class="string">'ellipse'</span>,
+  g: <span class="string">'g'</span>,
+  image: <span class="string">'image'</span>,
+  line: <span class="string">'line'</span>,
+  linearGradient: <span class="string">'linearGradient'</span>,
+  mask: <span class="string">'mask'</span>,
+  path: <span class="string">'path'</span>,
+  pattern: <span class="string">'pattern'</span>,
+  polygon: <span class="string">'polygon'</span>,
+  polyline: <span class="string">'polyline'</span>,
+  radialGradient: <span class="string">'radialGradient'</span>,
+  rect: <span class="string">'rect'</span>,
+  stop: <span class="string">'stop'</span>,
+  svg: <span class="string">'svg'</span>,
+  text: <span class="string">'text'</span>,
+  tspan: <span class="string">'tspan'</span>
+
+}, createDOMFactory);
+
+module.exports = ReactDOMFactories;</code></pre>

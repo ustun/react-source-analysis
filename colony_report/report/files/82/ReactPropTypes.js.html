@@ -1,0 +1,357 @@
+<h1>ReactPropTypes.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactPropTypes
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactElement = require(<span class="string">'./ReactElement'</span>);
+<span class="keyword">var</span> ReactPropTypeLocationNames = require(<span class="string">'./ReactPropTypeLocationNames'</span>);
+
+<span class="keyword">var</span> emptyFunction = require(<span class="string">'fbjs/lib/emptyFunction'</span>);
+<span class="keyword">var</span> getIteratorFn = require(<span class="string">'./getIteratorFn'</span>);
+
+<span class="comment">/**
+ * Collection of methods that allow declaration and validation of props that are
+ * supplied to React components. Example usage:
+ *
+ *   var Props = require('ReactPropTypes');
+ *   var MyArticle = React.createClass({
+ *     propTypes: {
+ *       // An optional string prop named "description".
+ *       description: Props.string,
+ *
+ *       // A required enum prop named "category".
+ *       category: Props.oneOf(['News','Photos']).isRequired,
+ *
+ *       // A prop named "dialog" that requires an instance of Dialog.
+ *       dialog: Props.instanceOf(Dialog).isRequired
+ *     },
+ *     render: function() { ... }
+ *   });
+ *
+ * A more formal specification of how these methods are used:
+ *
+ *   type := array|bool|func|object|number|string|oneOf([...])|instanceOf(...)
+ *   decl := ReactPropTypes.{type}(.isRequired)?
+ *
+ * Each and every declaration produces a function with the same signature. This
+ * allows the creation of custom validation functions. For example:
+ *
+ *  var MyLink = React.createClass({
+ *    propTypes: {
+ *      // An optional string or URI prop named "href".
+ *      href: function(props, propName, componentName) {
+ *        var propValue = props[propName];
+ *        if (propValue != null &amp;&amp; typeof propValue !== 'string' &amp;&amp;
+ *            !(propValue instanceof URI)) {
+ *          return new Error(
+ *            'Expected a string or an URI for ' + propName + ' in ' +
+ *            componentName
+ *          );
+ *        }
+ *      }
+ *    },
+ *    render: function() {...}
+ *  });
+ *
+ * @internal
+ */</span>
+
+<span class="keyword">var</span> ANONYMOUS = <span class="string">'&lt;&lt;anonymous>>'</span>;
+
+<span class="keyword">var</span> ReactPropTypes = {
+  array: createPrimitiveTypeChecker(<span class="string">'array'</span>),
+  bool: createPrimitiveTypeChecker(<span class="string">'boolean'</span>),
+  func: createPrimitiveTypeChecker(<span class="string">'function'</span>),
+  number: createPrimitiveTypeChecker(<span class="string">'number'</span>),
+  object: createPrimitiveTypeChecker(<span class="string">'object'</span>),
+  string: createPrimitiveTypeChecker(<span class="string">'string'</span>),
+
+  any: createAnyTypeChecker(),
+  arrayOf: createArrayOfTypeChecker,
+  element: createElementTypeChecker(),
+  instanceOf: createInstanceTypeChecker,
+  node: createNodeChecker(),
+  objectOf: createObjectOfTypeChecker,
+  oneOf: createEnumTypeChecker,
+  oneOfType: createUnionTypeChecker,
+  shape: createShapeTypeChecker
+};
+
+<span class="function"><span class="keyword">function</span> <span class="title">createChainableTypeChecker</span><span class="params">(validate)</span> {</span>
+  <span class="function"><span class="keyword">function</span> <span class="title">checkType</span><span class="params">(isRequired, props, propName, componentName, location, propFullName)</span> {</span>
+    componentName = componentName || ANONYMOUS;
+    propFullName = propFullName || propName;
+    <span class="keyword">if</span> (props[propName] == <span class="literal">null</span>) {
+      <span class="keyword">var</span> locationName = ReactPropTypeLocationNames[location];
+      <span class="keyword">if</span> (isRequired) {
+        <span class="keyword">return</span> <span class="keyword">new</span> Error(<span class="string">'Required '</span> + locationName + <span class="string">' `'</span> + propFullName + <span class="string">'` was not specified in '</span> + (<span class="string">'`'</span> + componentName + <span class="string">'`.'</span>));
+      }
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    } <span class="keyword">else</span> {
+      <span class="keyword">return</span> validate(props, propName, componentName, location, propFullName);
+    }
+  }
+
+  <span class="keyword">var</span> chainedCheckType = checkType.bind(<span class="literal">null</span>, <span class="literal">false</span>);
+  chainedCheckType.isRequired = checkType.bind(<span class="literal">null</span>, <span class="literal">true</span>);
+
+  <span class="keyword">return</span> chainedCheckType;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">createPrimitiveTypeChecker</span><span class="params">(expectedType)</span> {</span>
+  <span class="function"><span class="keyword">function</span> <span class="title">validate</span><span class="params">(props, propName, componentName, location, propFullName)</span> {</span>
+    <span class="keyword">var</span> propValue = props[propName];
+    <span class="keyword">var</span> propType = getPropType(propValue);
+    <span class="keyword">if</span> (propType !== expectedType) {
+      <span class="keyword">var</span> locationName = ReactPropTypeLocationNames[location];
+      <span class="comment">// `propValue` being instance of, say, date/regexp, pass the 'object'</span>
+      <span class="comment">// check, but we can offer a more precise error message here rather than</span>
+      <span class="comment">// 'of type `object`'.</span>
+      <span class="keyword">var</span> preciseType = getPreciseType(propValue);
+
+      <span class="keyword">return</span> <span class="keyword">new</span> Error(<span class="string">'Invalid '</span> + locationName + <span class="string">' `'</span> + propFullName + <span class="string">'` of type '</span> + (<span class="string">'`'</span> + preciseType + <span class="string">'` supplied to `'</span> + componentName + <span class="string">'`, expected '</span>) + (<span class="string">'`'</span> + expectedType + <span class="string">'`.'</span>));
+    }
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+  <span class="keyword">return</span> createChainableTypeChecker(validate);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">createAnyTypeChecker</span><span class="params">()</span> {</span>
+  <span class="keyword">return</span> createChainableTypeChecker(emptyFunction.thatReturns(<span class="literal">null</span>));
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">createArrayOfTypeChecker</span><span class="params">(typeChecker)</span> {</span>
+  <span class="function"><span class="keyword">function</span> <span class="title">validate</span><span class="params">(props, propName, componentName, location, propFullName)</span> {</span>
+    <span class="keyword">var</span> propValue = props[propName];
+    <span class="keyword">if</span> (!Array.isArray(propValue)) {
+      <span class="keyword">var</span> locationName = ReactPropTypeLocationNames[location];
+      <span class="keyword">var</span> propType = getPropType(propValue);
+      <span class="keyword">return</span> <span class="keyword">new</span> Error(<span class="string">'Invalid '</span> + locationName + <span class="string">' `'</span> + propFullName + <span class="string">'` of type '</span> + (<span class="string">'`'</span> + propType + <span class="string">'` supplied to `'</span> + componentName + <span class="string">'`, expected an array.'</span>));
+    }
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; propValue.length; i++) {
+      <span class="keyword">var</span> error = typeChecker(propValue, i, componentName, location, propFullName + <span class="string">'['</span> + i + <span class="string">']'</span>);
+      <span class="keyword">if</span> (error <span class="keyword">instanceof</span> Error) {
+        <span class="keyword">return</span> error;
+      }
+    }
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+  <span class="keyword">return</span> createChainableTypeChecker(validate);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">createElementTypeChecker</span><span class="params">()</span> {</span>
+  <span class="function"><span class="keyword">function</span> <span class="title">validate</span><span class="params">(props, propName, componentName, location, propFullName)</span> {</span>
+    <span class="keyword">if</span> (!ReactElement.isValidElement(props[propName])) {
+      <span class="keyword">var</span> locationName = ReactPropTypeLocationNames[location];
+      <span class="keyword">return</span> <span class="keyword">new</span> Error(<span class="string">'Invalid '</span> + locationName + <span class="string">' `'</span> + propFullName + <span class="string">'` supplied to '</span> + (<span class="string">'`'</span> + componentName + <span class="string">'`, expected a single ReactElement.'</span>));
+    }
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+  <span class="keyword">return</span> createChainableTypeChecker(validate);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">createInstanceTypeChecker</span><span class="params">(expectedClass)</span> {</span>
+  <span class="function"><span class="keyword">function</span> <span class="title">validate</span><span class="params">(props, propName, componentName, location, propFullName)</span> {</span>
+    <span class="keyword">if</span> (!(props[propName] <span class="keyword">instanceof</span> expectedClass)) {
+      <span class="keyword">var</span> locationName = ReactPropTypeLocationNames[location];
+      <span class="keyword">var</span> expectedClassName = expectedClass.name || ANONYMOUS;
+      <span class="keyword">var</span> actualClassName = getClassName(props[propName]);
+      <span class="keyword">return</span> <span class="keyword">new</span> Error(<span class="string">'Invalid '</span> + locationName + <span class="string">' `'</span> + propFullName + <span class="string">'` of type '</span> + (<span class="string">'`'</span> + actualClassName + <span class="string">'` supplied to `'</span> + componentName + <span class="string">'`, expected '</span>) + (<span class="string">'instance of `'</span> + expectedClassName + <span class="string">'`.'</span>));
+    }
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+  <span class="keyword">return</span> createChainableTypeChecker(validate);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">createEnumTypeChecker</span><span class="params">(expectedValues)</span> {</span>
+  <span class="keyword">if</span> (!Array.isArray(expectedValues)) {
+    <span class="keyword">return</span> createChainableTypeChecker(<span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+      <span class="keyword">return</span> <span class="keyword">new</span> Error(<span class="string">'Invalid argument supplied to oneOf, expected an instance of array.'</span>);
+    });
+  }
+
+  <span class="function"><span class="keyword">function</span> <span class="title">validate</span><span class="params">(props, propName, componentName, location, propFullName)</span> {</span>
+    <span class="keyword">var</span> propValue = props[propName];
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; expectedValues.length; i++) {
+      <span class="keyword">if</span> (propValue === expectedValues[i]) {
+        <span class="keyword">return</span> <span class="literal">null</span>;
+      }
+    }
+
+    <span class="keyword">var</span> locationName = ReactPropTypeLocationNames[location];
+    <span class="keyword">var</span> valuesString = JSON.stringify(expectedValues);
+    <span class="keyword">return</span> <span class="keyword">new</span> Error(<span class="string">'Invalid '</span> + locationName + <span class="string">' `'</span> + propFullName + <span class="string">'` of value `'</span> + propValue + <span class="string">'` '</span> + (<span class="string">'supplied to `'</span> + componentName + <span class="string">'`, expected one of '</span> + valuesString + <span class="string">'.'</span>));
+  }
+  <span class="keyword">return</span> createChainableTypeChecker(validate);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">createObjectOfTypeChecker</span><span class="params">(typeChecker)</span> {</span>
+  <span class="function"><span class="keyword">function</span> <span class="title">validate</span><span class="params">(props, propName, componentName, location, propFullName)</span> {</span>
+    <span class="keyword">var</span> propValue = props[propName];
+    <span class="keyword">var</span> propType = getPropType(propValue);
+    <span class="keyword">if</span> (propType !== <span class="string">'object'</span>) {
+      <span class="keyword">var</span> locationName = ReactPropTypeLocationNames[location];
+      <span class="keyword">return</span> <span class="keyword">new</span> Error(<span class="string">'Invalid '</span> + locationName + <span class="string">' `'</span> + propFullName + <span class="string">'` of type '</span> + (<span class="string">'`'</span> + propType + <span class="string">'` supplied to `'</span> + componentName + <span class="string">'`, expected an object.'</span>));
+    }
+    <span class="keyword">for</span> (<span class="keyword">var</span> key <span class="keyword">in</span> propValue) {
+      <span class="keyword">if</span> (propValue.hasOwnProperty(key)) {
+        <span class="keyword">var</span> error = typeChecker(propValue, key, componentName, location, propFullName + <span class="string">'.'</span> + key);
+        <span class="keyword">if</span> (error <span class="keyword">instanceof</span> Error) {
+          <span class="keyword">return</span> error;
+        }
+      }
+    }
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+  <span class="keyword">return</span> createChainableTypeChecker(validate);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">createUnionTypeChecker</span><span class="params">(arrayOfTypeCheckers)</span> {</span>
+  <span class="keyword">if</span> (!Array.isArray(arrayOfTypeCheckers)) {
+    <span class="keyword">return</span> createChainableTypeChecker(<span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+      <span class="keyword">return</span> <span class="keyword">new</span> Error(<span class="string">'Invalid argument supplied to oneOfType, expected an instance of array.'</span>);
+    });
+  }
+
+  <span class="function"><span class="keyword">function</span> <span class="title">validate</span><span class="params">(props, propName, componentName, location, propFullName)</span> {</span>
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; arrayOfTypeCheckers.length; i++) {
+      <span class="keyword">var</span> checker = arrayOfTypeCheckers[i];
+      <span class="keyword">if</span> (checker(props, propName, componentName, location, propFullName) == <span class="literal">null</span>) {
+        <span class="keyword">return</span> <span class="literal">null</span>;
+      }
+    }
+
+    <span class="keyword">var</span> locationName = ReactPropTypeLocationNames[location];
+    <span class="keyword">return</span> <span class="keyword">new</span> Error(<span class="string">'Invalid '</span> + locationName + <span class="string">' `'</span> + propFullName + <span class="string">'` supplied to '</span> + (<span class="string">'`'</span> + componentName + <span class="string">'`.'</span>));
+  }
+  <span class="keyword">return</span> createChainableTypeChecker(validate);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">createNodeChecker</span><span class="params">()</span> {</span>
+  <span class="function"><span class="keyword">function</span> <span class="title">validate</span><span class="params">(props, propName, componentName, location, propFullName)</span> {</span>
+    <span class="keyword">if</span> (!isNode(props[propName])) {
+      <span class="keyword">var</span> locationName = ReactPropTypeLocationNames[location];
+      <span class="keyword">return</span> <span class="keyword">new</span> Error(<span class="string">'Invalid '</span> + locationName + <span class="string">' `'</span> + propFullName + <span class="string">'` supplied to '</span> + (<span class="string">'`'</span> + componentName + <span class="string">'`, expected a ReactNode.'</span>));
+    }
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+  <span class="keyword">return</span> createChainableTypeChecker(validate);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">createShapeTypeChecker</span><span class="params">(shapeTypes)</span> {</span>
+  <span class="function"><span class="keyword">function</span> <span class="title">validate</span><span class="params">(props, propName, componentName, location, propFullName)</span> {</span>
+    <span class="keyword">var</span> propValue = props[propName];
+    <span class="keyword">var</span> propType = getPropType(propValue);
+    <span class="keyword">if</span> (propType !== <span class="string">'object'</span>) {
+      <span class="keyword">var</span> locationName = ReactPropTypeLocationNames[location];
+      <span class="keyword">return</span> <span class="keyword">new</span> Error(<span class="string">'Invalid '</span> + locationName + <span class="string">' `'</span> + propFullName + <span class="string">'` of type `'</span> + propType + <span class="string">'` '</span> + (<span class="string">'supplied to `'</span> + componentName + <span class="string">'`, expected `object`.'</span>));
+    }
+    <span class="keyword">for</span> (<span class="keyword">var</span> key <span class="keyword">in</span> shapeTypes) {
+      <span class="keyword">var</span> checker = shapeTypes[key];
+      <span class="keyword">if</span> (!checker) {
+        <span class="keyword">continue</span>;
+      }
+      <span class="keyword">var</span> error = checker(propValue, key, componentName, location, propFullName + <span class="string">'.'</span> + key);
+      <span class="keyword">if</span> (error) {
+        <span class="keyword">return</span> error;
+      }
+    }
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+  <span class="keyword">return</span> createChainableTypeChecker(validate);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">isNode</span><span class="params">(propValue)</span> {</span>
+  <span class="keyword">switch</span> (<span class="keyword">typeof</span> propValue) {
+    <span class="keyword">case</span> <span class="string">'number'</span>:
+    <span class="keyword">case</span> <span class="string">'string'</span>:
+    <span class="keyword">case</span> <span class="string">'undefined'</span>:
+      <span class="keyword">return</span> <span class="literal">true</span>;
+    <span class="keyword">case</span> <span class="string">'boolean'</span>:
+      <span class="keyword">return</span> !propValue;
+    <span class="keyword">case</span> <span class="string">'object'</span>:
+      <span class="keyword">if</span> (Array.isArray(propValue)) {
+        <span class="keyword">return</span> propValue.every(isNode);
+      }
+      <span class="keyword">if</span> (propValue === <span class="literal">null</span> || ReactElement.isValidElement(propValue)) {
+        <span class="keyword">return</span> <span class="literal">true</span>;
+      }
+
+      <span class="keyword">var</span> iteratorFn = getIteratorFn(propValue);
+      <span class="keyword">if</span> (iteratorFn) {
+        <span class="keyword">var</span> iterator = iteratorFn.call(propValue);
+        <span class="keyword">var</span> step;
+        <span class="keyword">if</span> (iteratorFn !== propValue.entries) {
+          <span class="keyword">while</span> (!(step = iterator.next()).done) {
+            <span class="keyword">if</span> (!isNode(step.value)) {
+              <span class="keyword">return</span> <span class="literal">false</span>;
+            }
+          }
+        } <span class="keyword">else</span> {
+          <span class="comment">// Iterator will provide entry [k,v] tuples rather than values.</span>
+          <span class="keyword">while</span> (!(step = iterator.next()).done) {
+            <span class="keyword">var</span> entry = step.value;
+            <span class="keyword">if</span> (entry) {
+              <span class="keyword">if</span> (!isNode(entry[<span class="number">1</span>])) {
+                <span class="keyword">return</span> <span class="literal">false</span>;
+              }
+            }
+          }
+        }
+      } <span class="keyword">else</span> {
+        <span class="keyword">return</span> <span class="literal">false</span>;
+      }
+
+      <span class="keyword">return</span> <span class="literal">true</span>;
+    <span class="keyword">default</span>:
+      <span class="keyword">return</span> <span class="literal">false</span>;
+  }
+}
+
+<span class="comment">// Equivalent of `typeof` but with special handling for array and regexp.</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getPropType</span><span class="params">(propValue)</span> {</span>
+  <span class="keyword">var</span> propType = <span class="keyword">typeof</span> propValue;
+  <span class="keyword">if</span> (Array.isArray(propValue)) {
+    <span class="keyword">return</span> <span class="string">'array'</span>;
+  }
+  <span class="keyword">if</span> (propValue <span class="keyword">instanceof</span> RegExp) {
+    <span class="comment">// Old webkits (at least until Android 4.0) return 'function' rather than</span>
+    <span class="comment">// 'object' for typeof a RegExp. We'll normalize this here so that /bla/</span>
+    <span class="comment">// passes PropTypes.object.</span>
+    <span class="keyword">return</span> <span class="string">'object'</span>;
+  }
+  <span class="keyword">return</span> propType;
+}
+
+<span class="comment">// This handles more types than `getPropType`. Only used for error messages.</span>
+<span class="comment">// See `createPrimitiveTypeChecker`.</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getPreciseType</span><span class="params">(propValue)</span> {</span>
+  <span class="keyword">var</span> propType = getPropType(propValue);
+  <span class="keyword">if</span> (propType === <span class="string">'object'</span>) {
+    <span class="keyword">if</span> (propValue <span class="keyword">instanceof</span> Date) {
+      <span class="keyword">return</span> <span class="string">'date'</span>;
+    } <span class="keyword">else</span> <span class="keyword">if</span> (propValue <span class="keyword">instanceof</span> RegExp) {
+      <span class="keyword">return</span> <span class="string">'regexp'</span>;
+    }
+  }
+  <span class="keyword">return</span> propType;
+}
+
+<span class="comment">// Returns class name of the object, if any.</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getClassName</span><span class="params">(propValue)</span> {</span>
+  <span class="keyword">if</span> (!propValue.constructor || !propValue.constructor.name) {
+    <span class="keyword">return</span> ANONYMOUS;
+  }
+  <span class="keyword">return</span> propValue.constructor.name;
+}
+
+module.exports = ReactPropTypes;</code></pre>

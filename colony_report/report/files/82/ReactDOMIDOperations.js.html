@@ -1,0 +1,46 @@
+<h1>ReactDOMIDOperations.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDOMIDOperations
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> DOMChildrenOperations = require(<span class="string">'./DOMChildrenOperations'</span>);
+<span class="keyword">var</span> ReactDOMComponentTree = require(<span class="string">'./ReactDOMComponentTree'</span>);
+<span class="keyword">var</span> ReactPerf = require(<span class="string">'./ReactPerf'</span>);
+
+<span class="comment">/**
+ * Operations used to process updates to DOM nodes.
+ */</span>
+<span class="keyword">var</span> ReactDOMIDOperations = {
+
+  <span class="comment">/**
+   * Updates a component's children by processing a series of updates.
+   *
+   * @param {array&lt;object>} updates List of update configurations.
+   * @param {array&lt;string>} markup List of markup strings.
+   * @internal
+   */</span>
+  dangerouslyProcessChildrenUpdates: <span class="function"><span class="keyword">function</span> <span class="params">(updates, markup)</span> {</span>
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; updates.length; i++) {
+      <span class="keyword">var</span> update = updates[i];
+      <span class="keyword">var</span> node = ReactDOMComponentTree.getNodeFromInstance(update.parentInst);
+      update.parentNode = node;
+    }
+    DOMChildrenOperations.processUpdates(updates, markup);
+  }
+};
+
+ReactPerf.measureMethods(ReactDOMIDOperations, <span class="string">'ReactDOMIDOperations'</span>, {
+  dangerouslyProcessChildrenUpdates: <span class="string">'dangerouslyProcessChildrenUpdates'</span>
+});
+
+module.exports = ReactDOMIDOperations;</code></pre>

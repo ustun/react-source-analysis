@@ -1,0 +1,104 @@
+<h1>getEventKey.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule getEventKey
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> getEventCharCode = require(<span class="string">'./getEventCharCode'</span>);
+
+<span class="comment">/**
+ * Normalization of deprecated HTML5 `key` values
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent#Key_names
+ */</span>
+<span class="keyword">var</span> normalizeKey = {
+  <span class="string">'Esc'</span>: <span class="string">'Escape'</span>,
+  <span class="string">'Spacebar'</span>: <span class="string">' '</span>,
+  <span class="string">'Left'</span>: <span class="string">'ArrowLeft'</span>,
+  <span class="string">'Up'</span>: <span class="string">'ArrowUp'</span>,
+  <span class="string">'Right'</span>: <span class="string">'ArrowRight'</span>,
+  <span class="string">'Down'</span>: <span class="string">'ArrowDown'</span>,
+  <span class="string">'Del'</span>: <span class="string">'Delete'</span>,
+  <span class="string">'Win'</span>: <span class="string">'OS'</span>,
+  <span class="string">'Menu'</span>: <span class="string">'ContextMenu'</span>,
+  <span class="string">'Apps'</span>: <span class="string">'ContextMenu'</span>,
+  <span class="string">'Scroll'</span>: <span class="string">'ScrollLock'</span>,
+  <span class="string">'MozPrintableKey'</span>: <span class="string">'Unidentified'</span>
+};
+
+<span class="comment">/**
+ * Translation from legacy `keyCode` to HTML5 `key`
+ * Only special keys supported, all others depend on keyboard layout or browser
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent#Key_names
+ */</span>
+<span class="keyword">var</span> translateToKey = {
+  <span class="number">8</span>: <span class="string">'Backspace'</span>,
+  <span class="number">9</span>: <span class="string">'Tab'</span>,
+  <span class="number">12</span>: <span class="string">'Clear'</span>,
+  <span class="number">13</span>: <span class="string">'Enter'</span>,
+  <span class="number">16</span>: <span class="string">'Shift'</span>,
+  <span class="number">17</span>: <span class="string">'Control'</span>,
+  <span class="number">18</span>: <span class="string">'Alt'</span>,
+  <span class="number">19</span>: <span class="string">'Pause'</span>,
+  <span class="number">20</span>: <span class="string">'CapsLock'</span>,
+  <span class="number">27</span>: <span class="string">'Escape'</span>,
+  <span class="number">32</span>: <span class="string">' '</span>,
+  <span class="number">33</span>: <span class="string">'PageUp'</span>,
+  <span class="number">34</span>: <span class="string">'PageDown'</span>,
+  <span class="number">35</span>: <span class="string">'End'</span>,
+  <span class="number">36</span>: <span class="string">'Home'</span>,
+  <span class="number">37</span>: <span class="string">'ArrowLeft'</span>,
+  <span class="number">38</span>: <span class="string">'ArrowUp'</span>,
+  <span class="number">39</span>: <span class="string">'ArrowRight'</span>,
+  <span class="number">40</span>: <span class="string">'ArrowDown'</span>,
+  <span class="number">45</span>: <span class="string">'Insert'</span>,
+  <span class="number">46</span>: <span class="string">'Delete'</span>,
+  <span class="number">112</span>: <span class="string">'F1'</span>, <span class="number">113</span>: <span class="string">'F2'</span>, <span class="number">114</span>: <span class="string">'F3'</span>, <span class="number">115</span>: <span class="string">'F4'</span>, <span class="number">116</span>: <span class="string">'F5'</span>, <span class="number">117</span>: <span class="string">'F6'</span>,
+  <span class="number">118</span>: <span class="string">'F7'</span>, <span class="number">119</span>: <span class="string">'F8'</span>, <span class="number">120</span>: <span class="string">'F9'</span>, <span class="number">121</span>: <span class="string">'F10'</span>, <span class="number">122</span>: <span class="string">'F11'</span>, <span class="number">123</span>: <span class="string">'F12'</span>,
+  <span class="number">144</span>: <span class="string">'NumLock'</span>,
+  <span class="number">145</span>: <span class="string">'ScrollLock'</span>,
+  <span class="number">224</span>: <span class="string">'Meta'</span>
+};
+
+<span class="comment">/**
+ * @param {object} nativeEvent Native browser event.
+ * @return {string} Normalized `key` property.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getEventKey</span><span class="params">(nativeEvent)</span> {</span>
+  <span class="keyword">if</span> (nativeEvent.key) {
+    <span class="comment">// Normalize inconsistent values reported by browsers due to</span>
+    <span class="comment">// implementations of a working draft specification.</span>
+
+    <span class="comment">// FireFox implements `key` but returns `MozPrintableKey` for all</span>
+    <span class="comment">// printable characters (normalized to `Unidentified`), ignore it.</span>
+    <span class="keyword">var</span> key = normalizeKey[nativeEvent.key] || nativeEvent.key;
+    <span class="keyword">if</span> (key !== <span class="string">'Unidentified'</span>) {
+      <span class="keyword">return</span> key;
+    }
+  }
+
+  <span class="comment">// Browser does not implement `key`, polyfill as much of it as we can.</span>
+  <span class="keyword">if</span> (nativeEvent.type === <span class="string">'keypress'</span>) {
+    <span class="keyword">var</span> charCode = getEventCharCode(nativeEvent);
+
+    <span class="comment">// The enter-key is technically both printable and non-printable and can</span>
+    <span class="comment">// thus be captured by `keypress`, no other non-printable key should.</span>
+    <span class="keyword">return</span> charCode === <span class="number">13</span> ? <span class="string">'Enter'</span> : String.fromCharCode(charCode);
+  }
+  <span class="keyword">if</span> (nativeEvent.type === <span class="string">'keydown'</span> || nativeEvent.type === <span class="string">'keyup'</span>) {
+    <span class="comment">// While user keyboard layout determines the actual meaning of each</span>
+    <span class="comment">// `keyCode` value, almost all function keys have a universal value.</span>
+    <span class="keyword">return</span> translateToKey[nativeEvent.keyCode] || <span class="string">'Unidentified'</span>;
+  }
+  <span class="keyword">return</span> <span class="string">''</span>;
+}
+
+module.exports = getEventKey;</code></pre>

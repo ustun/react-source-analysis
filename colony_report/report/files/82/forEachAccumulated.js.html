@@ -1,0 +1,30 @@
+<h1>forEachAccumulated.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule forEachAccumulated
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="comment">/**
+ * @param {array} arr an "accumulation" of items which is either an Array or
+ * a single item. Useful when paired with the `accumulate` module. This is a
+ * simple utility that allows us to reason about a collection of items, but
+ * handling the case when there is exactly one item (and we do not need to
+ * allocate an array).
+ */</span>
+<span class="keyword">var</span> forEachAccumulated = <span class="function"><span class="keyword">function</span> <span class="params">(arr, cb, scope)</span> {</span>
+  <span class="keyword">if</span> (Array.isArray(arr)) {
+    arr.forEach(cb, scope);
+  } <span class="keyword">else</span> <span class="keyword">if</span> (arr) {
+    cb.call(scope, arr);
+  }
+};
+
+module.exports = forEachAccumulated;</code></pre>

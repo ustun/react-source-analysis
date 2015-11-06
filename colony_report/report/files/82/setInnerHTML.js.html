@@ -1,0 +1,91 @@
+<h1>setInnerHTML.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule setInnerHTML
+ */</span>
+
+<span class="comment">/* globals MSApp */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ExecutionEnvironment = require(<span class="string">'fbjs/lib/ExecutionEnvironment'</span>);
+
+<span class="keyword">var</span> WHITESPACE_TEST = <span class="regexp">/^[ \r\n\t\f]/</span>;
+<span class="keyword">var</span> NONVISIBLE_TEST = <span class="regexp">/&lt;(!--|link|noscript|meta|script|style)[ \r\n\t\f\/>]/</span>;
+
+<span class="comment">/**
+ * Set the innerHTML property of a node, ensuring that whitespace is preserved
+ * even in IE8.
+ *
+ * @param {DOMElement} node
+ * @param {string} html
+ * @internal
+ */</span>
+<span class="keyword">var</span> setInnerHTML = <span class="function"><span class="keyword">function</span> <span class="params">(node, html)</span> {</span>
+  node.innerHTML = html;
+};
+
+<span class="comment">// Win8 apps: Allow all html to be inserted</span>
+<span class="keyword">if</span> (<span class="keyword">typeof</span> MSApp !== <span class="string">'undefined'</span> &amp;&amp; MSApp.execUnsafeLocalFunction) {
+  setInnerHTML = <span class="function"><span class="keyword">function</span> <span class="params">(node, html)</span> {</span>
+    MSApp.execUnsafeLocalFunction(<span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+      node.innerHTML = html;
+    });
+  };
+}
+
+<span class="keyword">if</span> (ExecutionEnvironment.canUseDOM) {
+  <span class="comment">// IE8: When updating a just created node with innerHTML only leading</span>
+  <span class="comment">// whitespace is removed. When updating an existing node with innerHTML</span>
+  <span class="comment">// whitespace in root TextNodes is also collapsed.</span>
+  <span class="comment">// @see quirksmode.org/bugreports/archives/2004/11/innerhtml_and_t.html</span>
+
+  <span class="comment">// Feature detection; only IE8 is known to behave improperly like this.</span>
+  <span class="keyword">var</span> testElement = document.createElement(<span class="string">'div'</span>);
+  testElement.innerHTML = <span class="string">' '</span>;
+  <span class="keyword">if</span> (testElement.innerHTML === <span class="string">''</span>) {
+    setInnerHTML = <span class="function"><span class="keyword">function</span> <span class="params">(node, html)</span> {</span>
+      <span class="comment">// Magic theory: IE8 supposedly differentiates between added and updated</span>
+      <span class="comment">// nodes when processing innerHTML, innerHTML on updated nodes suffers</span>
+      <span class="comment">// from worse whitespace behavior. Re-adding a node like this triggers</span>
+      <span class="comment">// the initial and more favorable whitespace behavior.</span>
+      <span class="comment">// TODO: What to do on a detached node?</span>
+      <span class="keyword">if</span> (node.parentNode) {
+        node.parentNode.replaceChild(node, node);
+      }
+
+      <span class="comment">// We also implement a workaround for non-visible tags disappearing into</span>
+      <span class="comment">// thin air on IE8, this only happens if there is no visible text</span>
+      <span class="comment">// in-front of the non-visible tags. Piggyback on the whitespace fix</span>
+      <span class="comment">// and simply check if any non-visible tags appear in the source.</span>
+      <span class="keyword">if</span> (WHITESPACE_TEST.test(html) || html[<span class="number">0</span>] === <span class="string">'&lt;'</span> &amp;&amp; NONVISIBLE_TEST.test(html)) {
+        <span class="comment">// Recover leading whitespace by temporarily prepending any character.</span>
+        <span class="comment">// \uFEFF has the potential advantage of being zero-width/invisible.</span>
+        <span class="comment">// UglifyJS drops U+FEFF chars when parsing, so use String.fromCharCode</span>
+        <span class="comment">// in hopes that this is preserved even if "\uFEFF" is transformed to</span>
+        <span class="comment">// the actual Unicode character (by Babel, for example).</span>
+        <span class="comment">// https://github.com/mishoo/UglifyJS2/blob/v2.4.20/lib/parse.js#L216</span>
+        node.innerHTML = String.fromCharCode(<span class="number">0xFEFF</span>) + html;
+
+        <span class="comment">// deleteData leaves an empty `TextNode` which offsets the index of all</span>
+        <span class="comment">// children. Definitely want to avoid this.</span>
+        <span class="keyword">var</span> textNode = node.firstChild;
+        <span class="keyword">if</span> (textNode.data.length === <span class="number">1</span>) {
+          node.removeChild(textNode);
+        } <span class="keyword">else</span> {
+          textNode.deleteData(<span class="number">0</span>, <span class="number">1</span>);
+        }
+      } <span class="keyword">else</span> {
+        node.innerHTML = html;
+      }
+    };
+  }
+}
+
+module.exports = setInnerHTML;</code></pre>

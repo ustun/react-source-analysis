@@ -1,0 +1,97 @@
+<h1>ReactPerf.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactPerf
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="comment">/**
+ * ReactPerf is a general AOP system designed to measure performance. This
+ * module only has the hooks: see ReactDefaultPerf for the analysis tool.
+ */</span>
+<span class="keyword">var</span> ReactPerf = {
+  <span class="comment">/**
+   * Boolean to enable/disable measurement. Set to false by default to prevent
+   * accidental logging and perf loss.
+   */</span>
+  enableMeasure: <span class="literal">false</span>,
+
+  <span class="comment">/**
+   * Holds onto the measure function in use. By default, don't measure
+   * anything, but we'll override this if we inject a measure function.
+   */</span>
+  storedMeasure: _noMeasure,
+
+  <span class="comment">/**
+   * @param {object} object
+   * @param {string} objectName
+   * @param {object&lt;string>} methodNames
+   */</span>
+  measureMethods: <span class="function"><span class="keyword">function</span> <span class="params">(object, objectName, methodNames)</span> {</span>
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      <span class="keyword">for</span> (<span class="keyword">var</span> key <span class="keyword">in</span> methodNames) {
+        <span class="keyword">if</span> (!methodNames.hasOwnProperty(key)) {
+          <span class="keyword">continue</span>;
+        }
+        object[key] = ReactPerf.measure(objectName, methodNames[key], object[key]);
+      }
+    }
+  },
+
+  <span class="comment">/**
+   * Use this to wrap methods you want to measure. Zero overhead in production.
+   *
+   * @param {string} objName
+   * @param {string} fnName
+   * @param {function} func
+   * @return {function}
+   */</span>
+  measure: <span class="function"><span class="keyword">function</span> <span class="params">(objName, fnName, func)</span> {</span>
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      <span class="keyword">var</span> measuredFunc = <span class="literal">null</span>;
+      <span class="keyword">var</span> wrapper = <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+        <span class="keyword">if</span> (ReactPerf.enableMeasure) {
+          <span class="keyword">if</span> (!measuredFunc) {
+            measuredFunc = ReactPerf.storedMeasure(objName, fnName, func);
+          }
+          <span class="keyword">return</span> measuredFunc.apply(<span class="keyword">this</span>, arguments);
+        }
+        <span class="keyword">return</span> func.apply(<span class="keyword">this</span>, arguments);
+      };
+      wrapper.displayName = objName + <span class="string">'_'</span> + fnName;
+      <span class="keyword">return</span> wrapper;
+    }
+    <span class="keyword">return</span> func;
+  },
+
+  injection: {
+    <span class="comment">/**
+     * @param {function} measure
+     */</span>
+    injectMeasure: <span class="function"><span class="keyword">function</span> <span class="params">(measure)</span> {</span>
+      ReactPerf.storedMeasure = measure;
+    }
+  }
+};
+
+<span class="comment">/**
+ * Simply passes through the measured function, without measuring it.
+ *
+ * @param {string} objName
+ * @param {string} fnName
+ * @param {function} func
+ * @return {function}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">_noMeasure</span><span class="params">(objName, fnName, func)</span> {</span>
+  <span class="keyword">return</span> func;
+}
+
+module.exports = ReactPerf;</code></pre>

@@ -1,0 +1,68 @@
+<h1>ReactDefaultBatchingStrategy.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDefaultBatchingStrategy
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactUpdates = require(<span class="string">'./ReactUpdates'</span>);
+<span class="keyword">var</span> Transaction = require(<span class="string">'./Transaction'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> emptyFunction = require(<span class="string">'fbjs/lib/emptyFunction'</span>);
+
+<span class="keyword">var</span> RESET_BATCHED_UPDATES = {
+  initialize: emptyFunction,
+  close: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    ReactDefaultBatchingStrategy.isBatchingUpdates = <span class="literal">false</span>;
+  }
+};
+
+<span class="keyword">var</span> FLUSH_BATCHED_UPDATES = {
+  initialize: emptyFunction,
+  close: ReactUpdates.flushBatchedUpdates.bind(ReactUpdates)
+};
+
+<span class="keyword">var</span> TRANSACTION_WRAPPERS = [FLUSH_BATCHED_UPDATES, RESET_BATCHED_UPDATES];
+
+<span class="function"><span class="keyword">function</span> <span class="title">ReactDefaultBatchingStrategyTransaction</span><span class="params">()</span> {</span>
+  <span class="keyword">this</span>.reinitializeTransaction();
+}
+
+assign(ReactDefaultBatchingStrategyTransaction.prototype, Transaction.Mixin, {
+  getTransactionWrappers: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> TRANSACTION_WRAPPERS;
+  }
+});
+
+<span class="keyword">var</span> transaction = <span class="keyword">new</span> ReactDefaultBatchingStrategyTransaction();
+
+<span class="keyword">var</span> ReactDefaultBatchingStrategy = {
+  isBatchingUpdates: <span class="literal">false</span>,
+
+  <span class="comment">/**
+   * Call the provided function in a context within which calls to `setState`
+   * and friends are batched such that components aren't updated unnecessarily.
+   */</span>
+  batchedUpdates: <span class="function"><span class="keyword">function</span> <span class="params">(callback, a, b, c, d, e)</span> {</span>
+    <span class="keyword">var</span> alreadyBatchingUpdates = ReactDefaultBatchingStrategy.isBatchingUpdates;
+
+    ReactDefaultBatchingStrategy.isBatchingUpdates = <span class="literal">true</span>;
+
+    <span class="comment">// The code is written this way to avoid extra allocations</span>
+    <span class="keyword">if</span> (alreadyBatchingUpdates) {
+      callback(a, b, c, d, e);
+    } <span class="keyword">else</span> {
+      transaction.perform(callback, <span class="literal">null</span>, a, b, c, d, e);
+    }
+  }
+};
+
+module.exports = ReactDefaultBatchingStrategy;</code></pre>

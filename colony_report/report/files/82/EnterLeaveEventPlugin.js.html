@@ -1,0 +1,107 @@
+<h1>EnterLeaveEventPlugin.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule EnterLeaveEventPlugin
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> EventConstants = require(<span class="string">'./EventConstants'</span>);
+<span class="keyword">var</span> EventPropagators = require(<span class="string">'./EventPropagators'</span>);
+<span class="keyword">var</span> ReactDOMComponentTree = require(<span class="string">'./ReactDOMComponentTree'</span>);
+<span class="keyword">var</span> SyntheticMouseEvent = require(<span class="string">'./SyntheticMouseEvent'</span>);
+
+<span class="keyword">var</span> keyOf = require(<span class="string">'fbjs/lib/keyOf'</span>);
+
+<span class="keyword">var</span> topLevelTypes = EventConstants.topLevelTypes;
+
+<span class="keyword">var</span> eventTypes = {
+  mouseEnter: {
+    registrationName: keyOf({ onMouseEnter: <span class="literal">null</span> }),
+    dependencies: [topLevelTypes.topMouseOut, topLevelTypes.topMouseOver]
+  },
+  mouseLeave: {
+    registrationName: keyOf({ onMouseLeave: <span class="literal">null</span> }),
+    dependencies: [topLevelTypes.topMouseOut, topLevelTypes.topMouseOver]
+  }
+};
+
+<span class="keyword">var</span> EnterLeaveEventPlugin = {
+
+  eventTypes: eventTypes,
+
+  <span class="comment">/**
+   * For almost every interaction we care about, there will be both a top-level
+   * `mouseover` and `mouseout` event that occurs. Only use `mouseout` so that
+   * we do not extract duplicate events. However, moving the mouse into the
+   * browser from outside will not fire a `mouseout` event. In this case, we use
+   * the `mouseover` top-level event.
+   */</span>
+  extractEvents: <span class="function"><span class="keyword">function</span> <span class="params">(topLevelType, targetInst, nativeEvent, nativeEventTarget)</span> {</span>
+    <span class="keyword">if</span> (topLevelType === topLevelTypes.topMouseOver &amp;&amp; (nativeEvent.relatedTarget || nativeEvent.fromElement)) {
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    }
+    <span class="keyword">if</span> (topLevelType !== topLevelTypes.topMouseOut &amp;&amp; topLevelType !== topLevelTypes.topMouseOver) {
+      <span class="comment">// Must not be a mouse in or mouse out - ignoring.</span>
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    }
+
+    <span class="keyword">var</span> win;
+    <span class="keyword">if</span> (nativeEventTarget.window === nativeEventTarget) {
+      <span class="comment">// `nativeEventTarget` is probably a window object.</span>
+      win = nativeEventTarget;
+    } <span class="keyword">else</span> {
+      <span class="comment">// TODO: Figure out why `ownerDocument` is sometimes undefined in IE8.</span>
+      <span class="keyword">var</span> doc = nativeEventTarget.ownerDocument;
+      <span class="keyword">if</span> (doc) {
+        win = doc.defaultView || doc.parentWindow;
+      } <span class="keyword">else</span> {
+        win = window;
+      }
+    }
+
+    <span class="keyword">var</span> from;
+    <span class="keyword">var</span> to;
+    <span class="keyword">if</span> (topLevelType === topLevelTypes.topMouseOut) {
+      from = targetInst;
+      <span class="keyword">var</span> related = nativeEvent.relatedTarget || nativeEvent.toElement;
+      to = related ? ReactDOMComponentTree.getClosestInstanceFromNode(related) : <span class="literal">null</span>;
+    } <span class="keyword">else</span> {
+      <span class="comment">// Moving to a node from outside the window.</span>
+      from = <span class="literal">null</span>;
+      to = targetInst;
+    }
+
+    <span class="keyword">if</span> (from === to) {
+      <span class="comment">// Nothing pertains to our managed components.</span>
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    }
+
+    <span class="keyword">var</span> fromNode = from == <span class="literal">null</span> ? win : ReactDOMComponentTree.getNodeFromInstance(from);
+    <span class="keyword">var</span> toNode = to == <span class="literal">null</span> ? win : ReactDOMComponentTree.getNodeFromInstance(to);
+
+    <span class="keyword">var</span> leave = SyntheticMouseEvent.getPooled(eventTypes.mouseLeave, from, nativeEvent, nativeEventTarget);
+    leave.type = <span class="string">'mouseleave'</span>;
+    leave.target = fromNode;
+    leave.relatedTarget = toNode;
+
+    <span class="keyword">var</span> enter = SyntheticMouseEvent.getPooled(eventTypes.mouseEnter, to, nativeEvent, nativeEventTarget);
+    enter.type = <span class="string">'mouseenter'</span>;
+    enter.target = toNode;
+    enter.relatedTarget = fromNode;
+
+    EventPropagators.accumulateEnterLeaveDispatches(leave, enter, from, to);
+
+    <span class="keyword">return</span> [leave, enter];
+  }
+
+};
+
+module.exports = EnterLeaveEventPlugin;</code></pre>

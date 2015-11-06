@@ -1,0 +1,94 @@
+<h1>CallbackQueue.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule CallbackQueue
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> PooledClass = require(<span class="string">'./PooledClass'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+
+<span class="comment">/**
+ * A specialized pseudo-event module to help keep track of components waiting to
+ * be notified when their DOM representations are available for use.
+ *
+ * This implements `PooledClass`, so you should never need to instantiate this.
+ * Instead, use `CallbackQueue.getPooled()`.
+ *
+ * @class ReactMountReady
+ * @implements PooledClass
+ * @internal
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">CallbackQueue</span><span class="params">()</span> {</span>
+  <span class="keyword">this</span>._callbacks = <span class="literal">null</span>;
+  <span class="keyword">this</span>._contexts = <span class="literal">null</span>;
+}
+
+assign(CallbackQueue.prototype, {
+
+  <span class="comment">/**
+   * Enqueues a callback to be invoked when `notifyAll` is invoked.
+   *
+   * @param {function} callback Invoked when `notifyAll` is invoked.
+   * @param {?object} context Context to call `callback` with.
+   * @internal
+   */</span>
+  enqueue: <span class="function"><span class="keyword">function</span> <span class="params">(callback, context)</span> {</span>
+    <span class="keyword">this</span>._callbacks = <span class="keyword">this</span>._callbacks || [];
+    <span class="keyword">this</span>._contexts = <span class="keyword">this</span>._contexts || [];
+    <span class="keyword">this</span>._callbacks.push(callback);
+    <span class="keyword">this</span>._contexts.push(context);
+  },
+
+  <span class="comment">/**
+   * Invokes all enqueued callbacks and clears the queue. This is invoked after
+   * the DOM representation of a component has been created or updated.
+   *
+   * @internal
+   */</span>
+  notifyAll: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">var</span> callbacks = <span class="keyword">this</span>._callbacks;
+    <span class="keyword">var</span> contexts = <span class="keyword">this</span>._contexts;
+    <span class="keyword">if</span> (callbacks) {
+      !(callbacks.length === contexts.length) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Mismatched list of contexts in callback queue'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+      <span class="keyword">this</span>._callbacks = <span class="literal">null</span>;
+      <span class="keyword">this</span>._contexts = <span class="literal">null</span>;
+      <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; callbacks.length; i++) {
+        callbacks[i].call(contexts[i]);
+      }
+      callbacks.length = <span class="number">0</span>;
+      contexts.length = <span class="number">0</span>;
+    }
+  },
+
+  <span class="comment">/**
+   * Resets the internal queue.
+   *
+   * @internal
+   */</span>
+  reset: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">this</span>._callbacks = <span class="literal">null</span>;
+    <span class="keyword">this</span>._contexts = <span class="literal">null</span>;
+  },
+
+  <span class="comment">/**
+   * `PooledClass` looks for this.
+   */</span>
+  destructor: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">this</span>.reset();
+  }
+
+});
+
+PooledClass.addPoolingTo(CallbackQueue);
+
+module.exports = CallbackQueue;</code></pre>

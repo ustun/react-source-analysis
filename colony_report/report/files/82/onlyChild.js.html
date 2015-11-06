@@ -1,0 +1,34 @@
+<h1>onlyChild.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule onlyChild
+ */</span>
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactElement = require(<span class="string">'./ReactElement'</span>);
+
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+
+<span class="comment">/**
+ * Returns the first child in a collection of children and verifies that there
+ * is only one child in the collection. The current implementation of this
+ * function assumes that a single child gets passed without a wrapper, but the
+ * purpose of this helper function is to abstract away the particular structure
+ * of children.
+ *
+ * @param {?object} children Child collection structure.
+ * @return {ReactComponent} The first and only `ReactComponent` contained in the
+ * structure.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">onlyChild</span><span class="params">(children)</span> {</span>
+  !ReactElement.isValidElement(children) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'onlyChild must be passed a children with exactly one child.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  <span class="keyword">return</span> children;
+}
+
+module.exports = onlyChild;</code></pre>

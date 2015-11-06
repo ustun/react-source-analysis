@@ -1,0 +1,302 @@
+<h1>ReactInstanceHandles.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactInstanceHandles
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+
+<span class="keyword">var</span> SEPARATOR = <span class="string">'.'</span>;
+<span class="keyword">var</span> SEPARATOR_LENGTH = SEPARATOR.length;
+
+<span class="comment">/**
+ * Maximum depth of traversals before we consider the possibility of a bad ID.
+ */</span>
+<span class="keyword">var</span> MAX_TREE_DEPTH = <span class="number">10000</span>;
+
+<span class="comment">/**
+ * Creates a DOM ID prefix to use when mounting React components.
+ *
+ * @param {number} index A unique integer
+ * @return {string} React root ID.
+ * @internal
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getReactRootIDString</span><span class="params">(index)</span> {</span>
+  <span class="keyword">return</span> SEPARATOR + index.toString(<span class="number">36</span>);
+}
+
+<span class="comment">/**
+ * Checks if a character in the supplied ID is a separator or the end.
+ *
+ * @param {string} id A React DOM ID.
+ * @param {number} index Index of the character to check.
+ * @return {boolean} True if the character is a separator or end of the ID.
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">isBoundary</span><span class="params">(id, index)</span> {</span>
+  <span class="keyword">return</span> id.charAt(index) === SEPARATOR || index === id.length;
+}
+
+<span class="comment">/**
+ * Checks if the supplied string is a valid React DOM ID.
+ *
+ * @param {string} id A React DOM ID, maybe.
+ * @return {boolean} True if the string is a valid React DOM ID.
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">isValidID</span><span class="params">(id)</span> {</span>
+  <span class="keyword">return</span> id === <span class="string">''</span> || id.charAt(<span class="number">0</span>) === SEPARATOR &amp;&amp; id.charAt(id.length - <span class="number">1</span>) !== SEPARATOR;
+}
+
+<span class="comment">/**
+ * Checks if the first ID is an ancestor of or equal to the second ID.
+ *
+ * @param {string} ancestorID
+ * @param {string} descendantID
+ * @return {boolean} True if `ancestorID` is an ancestor of `descendantID`.
+ * @internal
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">isAncestorIDOf</span><span class="params">(ancestorID, descendantID)</span> {</span>
+  <span class="keyword">return</span> descendantID.indexOf(ancestorID) === <span class="number">0</span> &amp;&amp; isBoundary(descendantID, ancestorID.length);
+}
+
+<span class="comment">/**
+ * Gets the parent ID of the supplied React DOM ID, `id`.
+ *
+ * @param {string} id ID of a component.
+ * @return {string} ID of the parent, or an empty string.
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getParentID</span><span class="params">(id)</span> {</span>
+  <span class="keyword">return</span> id ? id.substr(<span class="number">0</span>, id.lastIndexOf(SEPARATOR)) : <span class="string">''</span>;
+}
+
+<span class="comment">/**
+ * Gets the next DOM ID on the tree path from the supplied `ancestorID` to the
+ * supplied `destinationID`. If they are equal, the ID is returned.
+ *
+ * @param {string} ancestorID ID of an ancestor node of `destinationID`.
+ * @param {string} destinationID ID of the destination node.
+ * @return {string} Next ID on the path from `ancestorID` to `destinationID`.
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getNextDescendantID</span><span class="params">(ancestorID, destinationID)</span> {</span>
+  !(isValidID(ancestorID) &amp;&amp; isValidID(destinationID)) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'getNextDescendantID(%s, %s): Received an invalid React DOM ID.'</span>, ancestorID, destinationID) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  !isAncestorIDOf(ancestorID, destinationID) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'getNextDescendantID(...): React has made an invalid assumption about '</span> + <span class="string">'the DOM hierarchy. Expected `%s` to be an ancestor of `%s`.'</span>, ancestorID, destinationID) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  <span class="keyword">if</span> (ancestorID === destinationID) {
+    <span class="keyword">return</span> ancestorID;
+  }
+  <span class="comment">// Skip over the ancestor and the immediate separator. Traverse until we hit</span>
+  <span class="comment">// another separator or we reach the end of `destinationID`.</span>
+  <span class="keyword">var</span> start = ancestorID.length + SEPARATOR_LENGTH;
+  <span class="keyword">var</span> i;
+  <span class="keyword">for</span> (i = start; i &lt; destinationID.length; i++) {
+    <span class="keyword">if</span> (isBoundary(destinationID, i)) {
+      <span class="keyword">break</span>;
+    }
+  }
+  <span class="keyword">return</span> destinationID.substr(<span class="number">0</span>, i);
+}
+
+<span class="comment">/**
+ * Gets the nearest common ancestor ID of two IDs.
+ *
+ * Using this ID scheme, the nearest common ancestor ID is the longest common
+ * prefix of the two IDs that immediately preceded a "marker" in both strings.
+ *
+ * @param {string} oneID
+ * @param {string} twoID
+ * @return {string} Nearest common ancestor ID, or the empty string if none.
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getFirstCommonAncestorID</span><span class="params">(oneID, twoID)</span> {</span>
+  <span class="keyword">var</span> minLength = Math.min(oneID.length, twoID.length);
+  <span class="keyword">if</span> (minLength === <span class="number">0</span>) {
+    <span class="keyword">return</span> <span class="string">''</span>;
+  }
+  <span class="keyword">var</span> lastCommonMarkerIndex = <span class="number">0</span>;
+  <span class="comment">// Use `&lt;=` to traverse until the "EOL" of the shorter string.</span>
+  <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt;= minLength; i++) {
+    <span class="keyword">if</span> (isBoundary(oneID, i) &amp;&amp; isBoundary(twoID, i)) {
+      lastCommonMarkerIndex = i;
+    } <span class="keyword">else</span> <span class="keyword">if</span> (oneID.charAt(i) !== twoID.charAt(i)) {
+      <span class="keyword">break</span>;
+    }
+  }
+  <span class="keyword">var</span> longestCommonID = oneID.substr(<span class="number">0</span>, lastCommonMarkerIndex);
+  !isValidID(longestCommonID) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'getFirstCommonAncestorID(%s, %s): Expected a valid React DOM ID: %s'</span>, oneID, twoID, longestCommonID) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  <span class="keyword">return</span> longestCommonID;
+}
+
+<span class="comment">/**
+ * Traverses the parent path between two IDs (either up or down). The IDs must
+ * not be the same, and there must exist a parent path between them. If the
+ * callback returns `false`, traversal is stopped.
+ *
+ * @param {?string} start ID at which to start traversal.
+ * @param {?string} stop ID at which to end traversal.
+ * @param {function} cb Callback to invoke each ID with.
+ * @param {*} arg Argument to invoke the callback with.
+ * @param {?boolean} skipFirst Whether or not to skip the first node.
+ * @param {?boolean} skipLast Whether or not to skip the last node.
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">traverseParentPath</span><span class="params">(start, stop, cb, arg, skipFirst, skipLast)</span> {</span>
+  start = start || <span class="string">''</span>;
+  stop = stop || <span class="string">''</span>;
+  !(start !== stop) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'traverseParentPath(...): Cannot traverse from and to the same ID, `%s`.'</span>, start) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  <span class="keyword">var</span> traverseUp = isAncestorIDOf(stop, start);
+  !(traverseUp || isAncestorIDOf(start, stop)) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'traverseParentPath(%s, %s, ...): Cannot traverse from two IDs that do '</span> + <span class="string">'not have a parent path.'</span>, start, stop) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  <span class="comment">// Traverse from `start` to `stop` one depth at a time.</span>
+  <span class="keyword">var</span> depth = <span class="number">0</span>;
+  <span class="keyword">var</span> traverse = traverseUp ? getParentID : getNextDescendantID;
+  <span class="keyword">for</span> (<span class="keyword">var</span> id = start;; <span class="comment">/* until break */</span>id = traverse(id, stop)) {
+    <span class="keyword">var</span> ret;
+    <span class="keyword">if</span> ((!skipFirst || id !== start) &amp;&amp; (!skipLast || id !== stop)) {
+      ret = cb(id, traverseUp, arg);
+    }
+    <span class="keyword">if</span> (ret === <span class="literal">false</span> || id === stop) {
+      <span class="comment">// Only break //after// visiting `stop`.</span>
+      <span class="keyword">break</span>;
+    }
+    !(depth++ &lt; MAX_TREE_DEPTH) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'traverseParentPath(%s, %s, ...): Detected an infinite loop while '</span> + <span class="string">'traversing the React DOM ID tree. This may be due to malformed IDs: %s'</span>, start, stop, id) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  }
+}
+
+<span class="comment">/**
+ * Manages the IDs assigned to DOM representations of React components. This
+ * uses a specific scheme in order to traverse the DOM efficiently (e.g. in
+ * order to simulate events).
+ *
+ * @internal
+ */</span>
+<span class="keyword">var</span> ReactInstanceHandles = {
+
+  <span class="comment">/**
+   * Constructs a React root ID
+   * @param {number} index A unique integer
+   * @return {string} A React root ID.
+   */</span>
+  createReactRootID: <span class="function"><span class="keyword">function</span> <span class="params">(index)</span> {</span>
+    <span class="keyword">return</span> getReactRootIDString(index);
+  },
+
+  <span class="comment">/**
+   * Constructs a React ID by joining a root ID with a name.
+   *
+   * @param {string} rootID Root ID of a parent component.
+   * @param {string} name A component's name (as flattened children).
+   * @return {string} A React ID.
+   * @internal
+   */</span>
+  createReactID: <span class="function"><span class="keyword">function</span> <span class="params">(rootID, name)</span> {</span>
+    <span class="keyword">return</span> rootID + name;
+  },
+
+  <span class="comment">/**
+   * Gets the DOM ID of the React component that is the root of the tree that
+   * contains the React component with the supplied DOM ID.
+   *
+   * @param {string} id DOM ID of a React component.
+   * @return {?string} DOM ID of the React component that is the root.
+   * @internal
+   */</span>
+  getReactRootIDFromNodeID: <span class="function"><span class="keyword">function</span> <span class="params">(id)</span> {</span>
+    <span class="keyword">if</span> (id &amp;&amp; id.charAt(<span class="number">0</span>) === SEPARATOR &amp;&amp; id.length > <span class="number">1</span>) {
+      <span class="keyword">var</span> index = id.indexOf(SEPARATOR, <span class="number">1</span>);
+      <span class="keyword">return</span> index > -<span class="number">1</span> ? id.substr(<span class="number">0</span>, index) : id;
+    }
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  },
+
+  <span class="comment">/**
+   * Traverses the ID hierarchy and invokes the supplied `cb` on any IDs that
+   * should would receive a `mouseEnter` or `mouseLeave` event.
+   *
+   * NOTE: Does not invoke the callback on the nearest common ancestor because
+   * nothing "entered" or "left" that element.
+   *
+   * @param {string} leaveID ID being left.
+   * @param {string} enterID ID being entered.
+   * @param {function} cb Callback to invoke on each entered/left ID.
+   * @param {*} upArg Argument to invoke the callback with on left IDs.
+   * @param {*} downArg Argument to invoke the callback with on entered IDs.
+   * @internal
+   */</span>
+  traverseEnterLeave: <span class="function"><span class="keyword">function</span> <span class="params">(leaveID, enterID, cb, upArg, downArg)</span> {</span>
+    <span class="keyword">var</span> ancestorID = getFirstCommonAncestorID(leaveID, enterID);
+    <span class="keyword">if</span> (ancestorID !== leaveID) {
+      traverseParentPath(leaveID, ancestorID, cb, upArg, <span class="literal">false</span>, <span class="literal">true</span>);
+    }
+    <span class="keyword">if</span> (ancestorID !== enterID) {
+      traverseParentPath(ancestorID, enterID, cb, downArg, <span class="literal">true</span>, <span class="literal">false</span>);
+    }
+  },
+
+  <span class="comment">/**
+   * Simulates the traversal of a two-phase, capture/bubble event dispatch.
+   *
+   * NOTE: This traversal happens on IDs without touching the DOM.
+   *
+   * @param {string} targetID ID of the target node.
+   * @param {function} cb Callback to invoke.
+   * @param {*} arg Argument to invoke the callback with.
+   * @internal
+   */</span>
+  traverseTwoPhase: <span class="function"><span class="keyword">function</span> <span class="params">(targetID, cb, arg)</span> {</span>
+    <span class="keyword">if</span> (targetID) {
+      traverseParentPath(<span class="string">''</span>, targetID, cb, arg, <span class="literal">true</span>, <span class="literal">false</span>);
+      traverseParentPath(targetID, <span class="string">''</span>, cb, arg, <span class="literal">false</span>, <span class="literal">true</span>);
+    }
+  },
+
+  <span class="comment">/**
+   * Same as `traverseTwoPhase` but skips the `targetID`.
+   */</span>
+  traverseTwoPhaseSkipTarget: <span class="function"><span class="keyword">function</span> <span class="params">(targetID, cb, arg)</span> {</span>
+    <span class="keyword">if</span> (targetID) {
+      traverseParentPath(<span class="string">''</span>, targetID, cb, arg, <span class="literal">true</span>, <span class="literal">true</span>);
+      traverseParentPath(targetID, <span class="string">''</span>, cb, arg, <span class="literal">true</span>, <span class="literal">true</span>);
+    }
+  },
+
+  <span class="comment">/**
+   * Traverse a node ID, calling the supplied `cb` for each ancestor ID. For
+   * example, passing `.0.$row-0.1` would result in `cb` getting called
+   * with `.0`, `.0.$row-0`, and `.0.$row-0.1`.
+   *
+   * NOTE: This traversal happens on IDs without touching the DOM.
+   *
+   * @param {string} targetID ID of the target node.
+   * @param {function} cb Callback to invoke.
+   * @param {*} arg Argument to invoke the callback with.
+   * @internal
+   */</span>
+  traverseAncestors: <span class="function"><span class="keyword">function</span> <span class="params">(targetID, cb, arg)</span> {</span>
+    traverseParentPath(<span class="string">''</span>, targetID, cb, arg, <span class="literal">true</span>, <span class="literal">false</span>);
+  },
+
+  getFirstCommonAncestorID: getFirstCommonAncestorID,
+
+  <span class="comment">/**
+   * Exposed for unit testing.
+   * @private
+   */</span>
+  _getNextDescendantID: getNextDescendantID,
+
+  isAncestorIDOf: isAncestorIDOf,
+
+  SEPARATOR: SEPARATOR
+
+};
+
+module.exports = ReactInstanceHandles;</code></pre>

@@ -1,0 +1,94 @@
+<h1>ReactOwner.js</h1>
+<pre><code class="lang-js"><span class="comment">// OK</span>
+<span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactOwner
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+
+<span class="comment">/**
+ * ReactOwners are capable of storing references to owned components.
+ *
+ * All components are capable of //being// referenced by owner components, but
+ * only ReactOwner components are capable of //referencing// owned components.
+ * The named reference is known as a "ref".
+ *
+ * Refs are available when mounted and updated during reconciliation.
+ *
+ *   var MyComponent = React.createClass({
+ *     render: function() {
+ *       return (
+ *         &lt;div onClick={this.handleClick}>
+ *           &lt;CustomComponent ref="custom" />
+ *         &lt;/div>
+ *       );
+ *     },
+ *     handleClick: function() {
+ *       this.refs.custom.handleClick();
+ *     },
+ *     componentDidMount: function() {
+ *       this.refs.custom.initialize();
+ *     }
+ *   });
+ *
+ * Refs should rarely be used. When refs are used, they should only be done to
+ * control data that is not handled by React's data flow.
+ *
+ * @class ReactOwner
+ */</span>
+<span class="keyword">var</span> ReactOwner = {
+
+  <span class="comment">/**
+   * @param {?object} object
+   * @return {boolean} True if `object` is a valid owner.
+   * @final
+   */</span>
+  isValidOwner: <span class="function"><span class="keyword">function</span> <span class="params">(object)</span> {</span>
+    <span class="keyword">return</span> !!(object &amp;&amp; <span class="keyword">typeof</span> object.attachRef === <span class="string">'function'</span> &amp;&amp; <span class="keyword">typeof</span> object.detachRef === <span class="string">'function'</span>);
+  },
+
+  <span class="comment">/**
+   * Adds a component by ref to an owner component.
+   *
+   * @param {ReactComponent} component Component to reference.
+   * @param {string} ref Name by which to refer to the component.
+   * @param {ReactOwner} owner Component on which to record the ref.
+   * @final
+   * @internal
+   */</span>
+  addComponentAsRefTo: <span class="function"><span class="keyword">function</span> <span class="params">(component, ref, owner)</span> {</span>
+    !ReactOwner.isValidOwner(owner) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'addComponentAsRefTo(...): Only a ReactOwner can have refs. You might '</span> + <span class="string">'be adding a ref to a component that was not created inside a component\'s '</span> + <span class="string">'`render` method, or you have multiple copies of React loaded '</span> + <span class="string">'(details: https://fb.me/react-refs-must-have-owner).'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    owner.attachRef(ref, component);
+  },
+
+  <span class="comment">/**
+   * Removes a component by ref from an owner component.
+   *
+   * @param {ReactComponent} component Component to dereference.
+   * @param {string} ref Name of the ref to remove.
+   * @param {ReactOwner} owner Component on which the ref is recorded.
+   * @final
+   * @internal
+   */</span>
+  removeComponentAsRefFrom: <span class="function"><span class="keyword">function</span> <span class="params">(component, ref, owner)</span> {</span>
+    !ReactOwner.isValidOwner(owner) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'removeComponentAsRefFrom(...): Only a ReactOwner can have refs. You might '</span> + <span class="string">'be removing a ref to a component that was not created inside a component\'s '</span> + <span class="string">'`render` method, or you have multiple copies of React loaded '</span> + <span class="string">'(details: https://fb.me/react-refs-must-have-owner).'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    <span class="comment">// Check that `component` is still the current ref because we do not want to</span>
+    <span class="comment">// detach the ref if another component stole it.</span>
+    <span class="keyword">if</span> (owner.getPublicInstance().refs[ref] === component.getPublicInstance()) {
+      owner.detachRef(ref);
+    }
+  }
+
+};
+
+module.exports = ReactOwner;
+</code></pre>

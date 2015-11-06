@@ -1,0 +1,119 @@
+<h1>MetaMatchers.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule MetaMatchers
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="comment">/**
+ * This modules adds a jasmine matcher toEqualSpecsIn that can be used to
+ * compare the specs in two different "describe" functions and their result.
+ * It can be used to test a test.
+ */</span>
+
+<span class="function"><span class="keyword">function</span> <span class="title">getRunnerWithResults</span><span class="params">(describeFunction)</span> {</span>
+  <span class="keyword">if</span> (describeFunction._cachedRunner) {
+    <span class="comment">// Cached result of execution. This is a convenience way to test against</span>
+    <span class="comment">// the same authorative function multiple times.</span>
+    <span class="keyword">return</span> describeFunction._cachedRunner;
+  }
+  <span class="comment">// Patch the current global environment.</span>
+  <span class="keyword">var</span> env = <span class="keyword">new</span> jasmine.Env();
+  <span class="comment">// Execute the tests synchronously.</span>
+  env.updateInterval = <span class="number">0</span>;
+  <span class="keyword">var</span> outerGetEnv = jasmine.getEnv;
+  jasmine.getEnv = <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> env;
+  };
+  <span class="comment">// TODO: Bring over matchers from the existing environment.</span>
+  <span class="keyword">var</span> runner = env.currentRunner();
+  <span class="keyword">try</span> {
+    env.describe(<span class="string">''</span>, describeFunction);
+    env.execute();
+  } <span class="keyword">finally</span> {
+    <span class="comment">// Restore the environment.</span>
+    jasmine.getEnv = outerGetEnv;
+  }
+  describeFunction._cachedRunner = runner;
+  <span class="keyword">return</span> runner;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">compareSpec</span><span class="params">(actual, expected)</span> {</span>
+  <span class="keyword">if</span> (actual.results().totalCount !== expected.results().totalCount) {
+    <span class="keyword">return</span> <span class="string">'Expected '</span> + expected.results().totalCount + <span class="string">' expects, '</span> + <span class="string">'but got '</span> + actual.results().totalCount + <span class="string">':'</span> + actual.getFullName();
+  }
+  <span class="keyword">return</span> <span class="literal">null</span>;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">includesDescription</span><span class="params">(specs, description, startIndex)</span> {</span>
+  <span class="keyword">for</span> (<span class="keyword">var</span> i = startIndex; i &lt; specs.length; i++) {
+    <span class="keyword">if</span> (specs[i].description === description) {
+      <span class="keyword">return</span> <span class="literal">true</span>;
+    }
+  }
+  <span class="keyword">return</span> <span class="literal">false</span>;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">compareSpecs</span><span class="params">(actualSpecs, expectedSpecs)</span> {</span>
+  <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; actualSpecs.length &amp;&amp; i &lt; expectedSpecs.length; i++) {
+    <span class="keyword">var</span> actual = actualSpecs[i];
+    <span class="keyword">var</span> expected = expectedSpecs[i];
+    <span class="keyword">if</span> (actual.description === expected.description) {
+      <span class="keyword">var</span> errorMessage = compareSpec(actual, expected);
+      <span class="keyword">if</span> (errorMessage) {
+        <span class="keyword">return</span> errorMessage;
+      }
+      <span class="keyword">continue</span>;
+    } <span class="keyword">else</span> <span class="keyword">if</span> (includesDescription(actualSpecs, expected.description, i)) {
+      <span class="keyword">return</span> <span class="string">'Did not expect the spec:'</span> + actualSpecs[i].getFullName();
+    } <span class="keyword">else</span> {
+      <span class="keyword">return</span> <span class="string">'Expected an equivalent to:'</span> + expectedSpecs[i].getFullName();
+    }
+  }
+  <span class="keyword">if</span> (i &lt; actualSpecs.length) {
+    <span class="keyword">return</span> <span class="string">'Did not expect the spec:'</span> + actualSpecs[i].getFullName();
+  }
+  <span class="keyword">if</span> (i &lt; expectedSpecs.length) {
+    <span class="keyword">return</span> <span class="string">'Expected an equivalent to:'</span> + expectedSpecs[i].getFullName();
+  }
+  <span class="keyword">return</span> <span class="literal">null</span>;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">compareDescription</span><span class="params">(a, b)</span> {</span>
+  <span class="keyword">if</span> (a.description === b.description) {
+    <span class="keyword">return</span> <span class="number">0</span>;
+  }
+  <span class="keyword">return</span> a.description &lt; b.description ? -<span class="number">1</span> : <span class="number">1</span>;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">compareRunners</span><span class="params">(actual, expected)</span> {</span>
+  <span class="keyword">return</span> compareSpecs(actual.specs().sort(compareDescription), expected.specs().sort(compareDescription));
+}
+
+<span class="keyword">var</span> MetaMatchers = {
+  toEqualSpecsIn: <span class="function"><span class="keyword">function</span> <span class="params">(expectedDescribeFunction)</span> {</span>
+    <span class="keyword">var</span> actualDescribeFunction = <span class="keyword">this</span>.actual;
+    <span class="keyword">if</span> (<span class="keyword">typeof</span> actualDescribeFunction !== <span class="string">'function'</span>) {
+      <span class="keyword">throw</span> Error(<span class="string">'toEqualSpecsIn() should be used on a describe function'</span>);
+    }
+    <span class="keyword">if</span> (<span class="keyword">typeof</span> expectedDescribeFunction !== <span class="string">'function'</span>) {
+      <span class="keyword">throw</span> Error(<span class="string">'toEqualSpecsIn() should be passed a describe function'</span>);
+    }
+    <span class="keyword">var</span> actual = getRunnerWithResults(actualDescribeFunction);
+    <span class="keyword">var</span> expected = getRunnerWithResults(expectedDescribeFunction);
+    <span class="keyword">var</span> errorMessage = compareRunners(actual, expected);
+    <span class="keyword">this</span>.message = <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+      <span class="keyword">return</span> [errorMessage, <span class="string">'The specs are equal. Expected them to be different.'</span>];
+    };
+    <span class="keyword">return</span> !errorMessage;
+  }
+};
+
+module.exports = MetaMatchers;</code></pre>

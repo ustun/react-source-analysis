@@ -1,0 +1,24 @@
+<h1>ReactServerBatchingStrategy.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2014-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactServerBatchingStrategy
+ * @typechecks
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactServerBatchingStrategy = {
+  isBatchingUpdates: <span class="literal">false</span>,
+  batchedUpdates: <span class="function"><span class="keyword">function</span> <span class="params">(callback)</span> {</span>
+    <span class="comment">// Don't do anything here. During the server rendering we don't want to</span>
+    <span class="comment">// schedule any updates. We will simply ignore them.</span>
+  }
+};
+
+module.exports = ReactServerBatchingStrategy;</code></pre>

@@ -1,0 +1,31 @@
+<h1>getNativeComponentFromComposite.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule getNativeComponentFromComposite
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactNodeTypes = require(<span class="string">'./ReactNodeTypes'</span>);
+
+<span class="function"><span class="keyword">function</span> <span class="title">getNativeComponentFromComposite</span><span class="params">(inst)</span> {</span>
+  <span class="keyword">var</span> type;
+
+  <span class="keyword">while</span> ((type = inst._renderedNodeType) === ReactNodeTypes.COMPOSITE) {
+    inst = inst._renderedComponent;
+  }
+
+  <span class="keyword">if</span> (type === ReactNodeTypes.NATIVE) {
+    <span class="keyword">return</span> inst._renderedComponent;
+  } <span class="keyword">else</span> <span class="keyword">if</span> (type === ReactNodeTypes.EMPTY) {
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+}
+
+module.exports = getNativeComponentFromComposite;</code></pre>

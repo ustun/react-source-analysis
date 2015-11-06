@@ -1,0 +1,67 @@
+<h1>ReactServerRendering.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks static-only
+ * @providesModule ReactServerRendering
+ */</span>
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactDOMContainerInfo = require(<span class="string">'./ReactDOMContainerInfo'</span>);
+<span class="keyword">var</span> ReactDefaultBatchingStrategy = require(<span class="string">'./ReactDefaultBatchingStrategy'</span>);
+<span class="keyword">var</span> ReactElement = require(<span class="string">'./ReactElement'</span>);
+<span class="keyword">var</span> ReactMarkupChecksum = require(<span class="string">'./ReactMarkupChecksum'</span>);
+<span class="keyword">var</span> ReactServerBatchingStrategy = require(<span class="string">'./ReactServerBatchingStrategy'</span>);
+<span class="keyword">var</span> ReactServerRenderingTransaction = require(<span class="string">'./ReactServerRenderingTransaction'</span>);
+<span class="keyword">var</span> ReactUpdates = require(<span class="string">'./ReactUpdates'</span>);
+
+<span class="keyword">var</span> emptyObject = require(<span class="string">'fbjs/lib/emptyObject'</span>);
+<span class="keyword">var</span> instantiateReactComponent = require(<span class="string">'./instantiateReactComponent'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+
+<span class="comment">/**
+ * @param {ReactElement} element
+ * @return {string} the HTML markup
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">renderToStringImpl</span><span class="params">(element, makeStaticMarkup)</span> {</span>
+  !ReactElement.isValidElement(element) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'renderToString(): You must pass a valid ReactElement.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+  <span class="keyword">var</span> transaction;
+  <span class="keyword">try</span> {
+    ReactUpdates.injection.injectBatchingStrategy(ReactServerBatchingStrategy);
+
+    transaction = ReactServerRenderingTransaction.getPooled(makeStaticMarkup);
+
+    <span class="keyword">return</span> transaction.perform(<span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+      <span class="keyword">var</span> componentInstance = instantiateReactComponent(element, <span class="literal">null</span>);
+      <span class="keyword">var</span> markup = componentInstance.mountComponent(transaction, <span class="literal">null</span>, ReactDOMContainerInfo(), emptyObject);
+      <span class="keyword">if</span> (!makeStaticMarkup) {
+        markup = ReactMarkupChecksum.addChecksumToMarkup(markup);
+      }
+      <span class="keyword">return</span> markup;
+    }, <span class="literal">null</span>);
+  } <span class="keyword">finally</span> {
+    ReactServerRenderingTransaction.release(transaction);
+    <span class="comment">// Revert to the DOM batching strategy since these two renderers</span>
+    <span class="comment">// currently share these stateful modules.</span>
+    ReactUpdates.injection.injectBatchingStrategy(ReactDefaultBatchingStrategy);
+  }
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">renderToString</span><span class="params">(element)</span> {</span>
+  <span class="keyword">return</span> renderToStringImpl(element, <span class="literal">false</span>);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">renderToStaticMarkup</span><span class="params">(element)</span> {</span>
+  <span class="keyword">return</span> renderToStringImpl(element, <span class="literal">true</span>);
+}
+
+module.exports = {
+  renderToString: renderToString,
+  renderToStaticMarkup: renderToStaticMarkup
+};</code></pre>

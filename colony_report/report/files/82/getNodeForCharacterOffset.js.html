@@ -1,0 +1,74 @@
+<h1>getNodeForCharacterOffset.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule getNodeForCharacterOffset
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="comment">/**
+ * Given any node return the first leaf node without children.
+ *
+ * @param {DOMElement|DOMTextNode} node
+ * @return {DOMElement|DOMTextNode}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getLeafNode</span><span class="params">(node)</span> {</span>
+  <span class="keyword">while</span> (node &amp;&amp; node.firstChild) {
+    node = node.firstChild;
+  }
+  <span class="keyword">return</span> node;
+}
+
+<span class="comment">/**
+ * Get the next sibling within a container. This will walk up the
+ * DOM if a node's siblings have been exhausted.
+ *
+ * @param {DOMElement|DOMTextNode} node
+ * @return {?DOMElement|DOMTextNode}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getSiblingNode</span><span class="params">(node)</span> {</span>
+  <span class="keyword">while</span> (node) {
+    <span class="keyword">if</span> (node.nextSibling) {
+      <span class="keyword">return</span> node.nextSibling;
+    }
+    node = node.parentNode;
+  }
+}
+
+<span class="comment">/**
+ * Get object describing the nodes which contain characters at offset.
+ *
+ * @param {DOMElement|DOMTextNode} root
+ * @param {number} offset
+ * @return {?object}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getNodeForCharacterOffset</span><span class="params">(root, offset)</span> {</span>
+  <span class="keyword">var</span> node = getLeafNode(root);
+  <span class="keyword">var</span> nodeStart = <span class="number">0</span>;
+  <span class="keyword">var</span> nodeEnd = <span class="number">0</span>;
+
+  <span class="keyword">while</span> (node) {
+    <span class="keyword">if</span> (node.nodeType === <span class="number">3</span>) {
+      nodeEnd = nodeStart + node.textContent.length;
+
+      <span class="keyword">if</span> (nodeStart &lt;= offset &amp;&amp; nodeEnd >= offset) {
+        <span class="keyword">return</span> {
+          node: node,
+          offset: offset - nodeStart
+        };
+      }
+
+      nodeStart = nodeEnd;
+    }
+
+    node = getLeafNode(getSiblingNode(node));
+  }
+}
+
+module.exports = getNodeForCharacterOffset;</code></pre>

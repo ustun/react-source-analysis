@@ -1,0 +1,94 @@
+<h1>ReactDefaultInjection.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDefaultInjection
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> BeforeInputEventPlugin = require(<span class="string">'./BeforeInputEventPlugin'</span>);
+<span class="keyword">var</span> ChangeEventPlugin = require(<span class="string">'./ChangeEventPlugin'</span>);
+<span class="keyword">var</span> DefaultEventPluginOrder = require(<span class="string">'./DefaultEventPluginOrder'</span>);
+<span class="keyword">var</span> EnterLeaveEventPlugin = require(<span class="string">'./EnterLeaveEventPlugin'</span>);
+<span class="keyword">var</span> ExecutionEnvironment = require(<span class="string">'fbjs/lib/ExecutionEnvironment'</span>);
+<span class="keyword">var</span> HTMLDOMPropertyConfig = require(<span class="string">'./HTMLDOMPropertyConfig'</span>);
+<span class="keyword">var</span> ReactBrowserComponentMixin = require(<span class="string">'./ReactBrowserComponentMixin'</span>);
+<span class="keyword">var</span> ReactComponentBrowserEnvironment = require(<span class="string">'./ReactComponentBrowserEnvironment'</span>);
+<span class="keyword">var</span> ReactDOMComponent = require(<span class="string">'./ReactDOMComponent'</span>);
+<span class="keyword">var</span> ReactDOMComponentTree = require(<span class="string">'./ReactDOMComponentTree'</span>);
+<span class="keyword">var</span> ReactDOMTreeTraversal = require(<span class="string">'./ReactDOMTreeTraversal'</span>);
+<span class="keyword">var</span> ReactDOMTextComponent = require(<span class="string">'./ReactDOMTextComponent'</span>);
+<span class="keyword">var</span> ReactDefaultBatchingStrategy = require(<span class="string">'./ReactDefaultBatchingStrategy'</span>);
+<span class="keyword">var</span> ReactEventListener = require(<span class="string">'./ReactEventListener'</span>);
+<span class="keyword">var</span> ReactInjection = require(<span class="string">'./ReactInjection'</span>);
+<span class="keyword">var</span> ReactReconcileTransaction = require(<span class="string">'./ReactReconcileTransaction'</span>);
+<span class="keyword">var</span> SVGDOMPropertyConfig = require(<span class="string">'./SVGDOMPropertyConfig'</span>);
+<span class="keyword">var</span> SelectEventPlugin = require(<span class="string">'./SelectEventPlugin'</span>);
+<span class="keyword">var</span> SimpleEventPlugin = require(<span class="string">'./SimpleEventPlugin'</span>);
+
+<span class="keyword">var</span> alreadyInjected = <span class="literal">false</span>;
+
+<span class="function"><span class="keyword">function</span> <span class="title">inject</span><span class="params">()</span> {</span>
+  <span class="keyword">if</span> (alreadyInjected) {
+    <span class="comment">// TODO: This is currently true because these injections are shared between</span>
+    <span class="comment">// the client and the server package. They should be built independently</span>
+    <span class="comment">// and not share any injection state. Then this problem will be solved.</span>
+    <span class="keyword">return</span>;
+  }
+  alreadyInjected = <span class="literal">true</span>;
+
+  ReactInjection.EventEmitter.injectReactEventListener(ReactEventListener);
+
+  <span class="comment">/**
+   * Inject modules for resolving DOM hierarchy and plugin ordering.
+   */</span>
+  ReactInjection.EventPluginHub.injectEventPluginOrder(DefaultEventPluginOrder);
+  ReactInjection.EventPluginUtils.injectComponentTree(ReactDOMComponentTree);
+  ReactInjection.EventPluginUtils.injectTreeTraversal(ReactDOMTreeTraversal);
+
+  <span class="comment">/**
+   * Some important event plugins included by default (without having to require
+   * them).
+   */</span>
+  ReactInjection.EventPluginHub.injectEventPluginsByName({
+    SimpleEventPlugin: SimpleEventPlugin,
+    EnterLeaveEventPlugin: EnterLeaveEventPlugin,
+    ChangeEventPlugin: ChangeEventPlugin,
+    SelectEventPlugin: SelectEventPlugin,
+    BeforeInputEventPlugin: BeforeInputEventPlugin
+  });
+
+  ReactInjection.NativeComponent.injectGenericComponentClass(ReactDOMComponent);
+
+  ReactInjection.NativeComponent.injectTextComponentClass(ReactDOMTextComponent);
+
+  ReactInjection.Class.injectMixin(ReactBrowserComponentMixin);
+
+  ReactInjection.DOMProperty.injectDOMPropertyConfig(HTMLDOMPropertyConfig);
+  ReactInjection.DOMProperty.injectDOMPropertyConfig(SVGDOMPropertyConfig);
+
+  ReactInjection.EmptyComponent.injectEmptyComponent(<span class="string">'noscript'</span>);
+
+  ReactInjection.Updates.injectReconcileTransaction(ReactReconcileTransaction);
+  ReactInjection.Updates.injectBatchingStrategy(ReactDefaultBatchingStrategy);
+
+  ReactInjection.Component.injectEnvironment(ReactComponentBrowserEnvironment);
+
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    <span class="keyword">var</span> url = ExecutionEnvironment.canUseDOM &amp;&amp; window.location.href || <span class="string">''</span>;
+    <span class="keyword">if</span> (<span class="regexp">/[?&amp;]react_perf\b/</span>.test(url)) {
+      <span class="keyword">var</span> ReactDefaultPerf = require(<span class="string">'./ReactDefaultPerf'</span>);
+      ReactDefaultPerf.start();
+    }
+  }
+}
+
+module.exports = {
+  inject: inject
+};</code></pre>

@@ -1,0 +1,51 @@
+<h1>ReactDOMButton.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDOMButton
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> mouseListenerNames = {
+  onClick: <span class="literal">true</span>,
+  onDoubleClick: <span class="literal">true</span>,
+  onMouseDown: <span class="literal">true</span>,
+  onMouseMove: <span class="literal">true</span>,
+  onMouseUp: <span class="literal">true</span>,
+
+  onClickCapture: <span class="literal">true</span>,
+  onDoubleClickCapture: <span class="literal">true</span>,
+  onMouseDownCapture: <span class="literal">true</span>,
+  onMouseMoveCapture: <span class="literal">true</span>,
+  onMouseUpCapture: <span class="literal">true</span>
+};
+
+<span class="comment">/**
+ * Implements a &lt;button> native component that does not receive mouse events
+ * when `disabled` is set.
+ */</span>
+<span class="keyword">var</span> ReactDOMButton = {
+  getNativeProps: <span class="function"><span class="keyword">function</span> <span class="params">(inst, props)</span> {</span>
+    <span class="keyword">if</span> (!props.disabled) {
+      <span class="keyword">return</span> props;
+    }
+
+    <span class="comment">// Copy the props, except the mouse listeners</span>
+    <span class="keyword">var</span> nativeProps = {};
+    <span class="keyword">for</span> (<span class="keyword">var</span> key <span class="keyword">in</span> props) {
+      <span class="keyword">if</span> (props.hasOwnProperty(key) &amp;&amp; !mouseListenerNames[key]) {
+        nativeProps[key] = props[key];
+      }
+    }
+
+    <span class="keyword">return</span> nativeProps;
+  }
+};
+
+module.exports = ReactDOMButton;</code></pre>

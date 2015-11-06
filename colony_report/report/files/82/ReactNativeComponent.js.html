@@ -1,0 +1,95 @@
+<h1>ReactNativeComponent.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2014-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactNativeComponent
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+
+<span class="keyword">var</span> autoGenerateWrapperClass = <span class="literal">null</span>;
+<span class="keyword">var</span> genericComponentClass = <span class="literal">null</span>;
+<span class="comment">// This registry keeps track of wrapper classes around native tags.</span>
+<span class="keyword">var</span> tagToComponentClass = {};
+<span class="keyword">var</span> textComponentClass = <span class="literal">null</span>;
+
+<span class="keyword">var</span> ReactNativeComponentInjection = {
+  <span class="comment">// This accepts a class that receives the tag string. This is a catch all</span>
+  <span class="comment">// that can render any kind of tag.</span>
+  injectGenericComponentClass: <span class="function"><span class="keyword">function</span> <span class="params">(componentClass)</span> {</span>
+    genericComponentClass = componentClass;
+  },
+  <span class="comment">// This accepts a text component class that takes the text string to be</span>
+  <span class="comment">// rendered as props.</span>
+  injectTextComponentClass: <span class="function"><span class="keyword">function</span> <span class="params">(componentClass)</span> {</span>
+    textComponentClass = componentClass;
+  },
+  <span class="comment">// This accepts a keyed object with classes as values. Each key represents a</span>
+  <span class="comment">// tag. That particular tag will use this class instead of the generic one.</span>
+  injectComponentClasses: <span class="function"><span class="keyword">function</span> <span class="params">(componentClasses)</span> {</span>
+    assign(tagToComponentClass, componentClasses);
+  }
+};
+
+<span class="comment">/**
+ * Get a composite component wrapper class for a specific tag.
+ *
+ * @param {ReactElement} element The tag for which to get the class.
+ * @return {function} The React class constructor function.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getComponentClassForElement</span><span class="params">(element)</span> {</span>
+  <span class="keyword">if</span> (<span class="keyword">typeof</span> element.type === <span class="string">'function'</span>) {
+    <span class="keyword">return</span> element.type;
+  }
+  <span class="keyword">var</span> tag = element.type;
+  <span class="keyword">var</span> componentClass = tagToComponentClass[tag];
+  <span class="keyword">if</span> (componentClass == <span class="literal">null</span>) {
+    tagToComponentClass[tag] = componentClass = autoGenerateWrapperClass(tag);
+  }
+  <span class="keyword">return</span> componentClass;
+}
+
+<span class="comment">/**
+ * Get a native internal component class for a specific tag.
+ *
+ * @param {ReactElement} element The element to create.
+ * @return {function} The internal class constructor function.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">createInternalComponent</span><span class="params">(element)</span> {</span>
+  !genericComponentClass ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'There is no registered component for the tag %s'</span>, element.type) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  <span class="keyword">return</span> <span class="keyword">new</span> genericComponentClass(element.type, element.props);
+}
+
+<span class="comment">/**
+ * @param {ReactText} text
+ * @return {ReactComponent}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">createInstanceForText</span><span class="params">(text)</span> {</span>
+  <span class="keyword">return</span> <span class="keyword">new</span> textComponentClass(text);
+}
+
+<span class="comment">/**
+ * @param {ReactComponent} component
+ * @return {boolean}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">isTextComponent</span><span class="params">(component)</span> {</span>
+  <span class="keyword">return</span> component <span class="keyword">instanceof</span> textComponentClass;
+}
+
+<span class="keyword">var</span> ReactNativeComponent = {
+  getComponentClassForElement: getComponentClassForElement,
+  createInternalComponent: createInternalComponent,
+  createInstanceForText: createInstanceForText,
+  isTextComponent: isTextComponent,
+  injection: ReactNativeComponentInjection
+};
+
+module.exports = ReactNativeComponent;</code></pre>

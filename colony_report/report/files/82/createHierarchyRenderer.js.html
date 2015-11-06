@@ -1,0 +1,86 @@
+<h1>createHierarchyRenderer.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule createHierarchyRenderer
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> React = require(<span class="string">'./React'</span>);
+
+<span class="comment">/**
+ * Creates a render method that makes it easier to create, render, and inspect a
+ * hierarchy of mock React component classes.
+ *
+ * A component class is created for each of the supplied render methods. Each
+ * render method is invoked with the classes created using the render methods
+ * that come after it in the supplied list of render methods.
+ *
+ *   var renderHierarchy = createHierarchyRenderer(
+ *     function ComponentA(ComponentB, ComponentC) {...},
+ *     function ComponentB(ComponentC) {...},
+ *     function ComponentC() {...}
+ *   );
+ *
+ * When the hierarchy is invoked, a two-dimensional array is returned. Each
+ * array corresponds to a supplied render method and contains the instances
+ * returned by that render method in the order it was invoked.
+ *
+ *   var instances = renderHierarchy(
+ *     function(ComponentA[, ComponentB, ComponentC]) {
+ *       ReactDOM.render(&lt;ComponentA />, ...);
+ *     })
+ *   );
+ *   instances[0][0]; // First return value of first render method.
+ *   instances[1][0]; // First return value of second render method.
+ *   instances[1][1]; // Second return value of second render method.
+ *
+ * Refs should be used to reference components that are not the return value of
+ * render methods.
+ *
+ *   expect(instances[0][0].refs.X).toBe(...);
+ *
+ * NOTE: The component classes created for each render method are re-used for
+ * each invocation of the hierarchy renderer. If new classes are needed, you
+ * should re-execute `createHierarchyRenderer` with the same arguments.
+ *
+ * @param {array&lt;function>} ...renderMethods
+ * @return {function}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">createHierarchyRenderer</span><span class="params">()</span> {</span>
+  <span class="keyword">for</span> (<span class="keyword">var</span> _len = arguments.length, renderMethods = Array(_len), _key = <span class="number">0</span>; _key &lt; _len; _key++) {
+    renderMethods[_key] = arguments[_key];
+  }
+
+  <span class="keyword">var</span> instances;
+  <span class="keyword">var</span> Components = renderMethods.reduceRight(<span class="function"><span class="keyword">function</span> <span class="params">(ComponentsAccumulator, renderMethod, depth)</span> {</span>
+    <span class="keyword">var</span> Component = React.createClass({
+      displayName: renderMethod.name,
+      render: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+        instances[depth].push(<span class="keyword">this</span>);
+        <span class="keyword">return</span> renderMethod.apply(<span class="keyword">this</span>, ComponentsAccumulator);
+      }
+    });
+    <span class="keyword">return</span> [Component].concat(ComponentsAccumulator);
+  }, []);
+  <span class="comment">/**
+   * @param {function} renderComponent
+   * @return {array&lt;array&lt;*>>}
+   */</span>
+  <span class="function"><span class="keyword">function</span> <span class="title">renderHierarchy</span><span class="params">(renderComponent)</span> {</span>
+    instances = renderMethods.map(<span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+      <span class="keyword">return</span> [];
+    });
+    renderComponent.apply(<span class="literal">null</span>, Components);
+    <span class="keyword">return</span> instances;
+  }
+  <span class="keyword">return</span> renderHierarchy;
+}
+
+module.exports = createHierarchyRenderer;</code></pre>

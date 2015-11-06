@@ -1,0 +1,110 @@
+<h1>ReactTransitionEvents.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactTransitionEvents
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ExecutionEnvironment = require(<span class="string">'fbjs/lib/ExecutionEnvironment'</span>);
+
+<span class="comment">/**
+ * EVENT_NAME_MAP is used to determine which event fired when a
+ * transition/animation ends, based on the style property used to
+ * define that event.
+ */</span>
+<span class="keyword">var</span> EVENT_NAME_MAP = {
+  transitionend: {
+    <span class="string">'transition'</span>: <span class="string">'transitionend'</span>,
+    <span class="string">'WebkitTransition'</span>: <span class="string">'webkitTransitionEnd'</span>,
+    <span class="string">'MozTransition'</span>: <span class="string">'mozTransitionEnd'</span>,
+    <span class="string">'OTransition'</span>: <span class="string">'oTransitionEnd'</span>,
+    <span class="string">'msTransition'</span>: <span class="string">'MSTransitionEnd'</span>
+  },
+
+  animationend: {
+    <span class="string">'animation'</span>: <span class="string">'animationend'</span>,
+    <span class="string">'WebkitAnimation'</span>: <span class="string">'webkitAnimationEnd'</span>,
+    <span class="string">'MozAnimation'</span>: <span class="string">'mozAnimationEnd'</span>,
+    <span class="string">'OAnimation'</span>: <span class="string">'oAnimationEnd'</span>,
+    <span class="string">'msAnimation'</span>: <span class="string">'MSAnimationEnd'</span>
+  }
+};
+
+<span class="keyword">var</span> endEvents = [];
+
+<span class="function"><span class="keyword">function</span> <span class="title">detectEvents</span><span class="params">()</span> {</span>
+  <span class="keyword">var</span> testEl = document.createElement(<span class="string">'div'</span>);
+  <span class="keyword">var</span> style = testEl.style;
+
+  <span class="comment">// On some platforms, in particular some releases of Android 4.x,</span>
+  <span class="comment">// the un-prefixed "animation" and "transition" properties are defined on the</span>
+  <span class="comment">// style object but the events that fire will still be prefixed, so we need</span>
+  <span class="comment">// to check if the un-prefixed events are useable, and if not remove them</span>
+  <span class="comment">// from the map</span>
+  <span class="keyword">if</span> (!(<span class="string">'AnimationEvent'</span> <span class="keyword">in</span> window)) {
+    <span class="keyword">delete</span> EVENT_NAME_MAP.animationend.animation;
+  }
+
+  <span class="keyword">if</span> (!(<span class="string">'TransitionEvent'</span> <span class="keyword">in</span> window)) {
+    <span class="keyword">delete</span> EVENT_NAME_MAP.transitionend.transition;
+  }
+
+  <span class="keyword">for</span> (<span class="keyword">var</span> baseEventName <span class="keyword">in</span> EVENT_NAME_MAP) {
+    <span class="keyword">var</span> baseEvents = EVENT_NAME_MAP[baseEventName];
+    <span class="keyword">for</span> (<span class="keyword">var</span> styleName <span class="keyword">in</span> baseEvents) {
+      <span class="keyword">if</span> (styleName <span class="keyword">in</span> style) {
+        endEvents.push(baseEvents[styleName]);
+        <span class="keyword">break</span>;
+      }
+    }
+  }
+}
+
+<span class="keyword">if</span> (ExecutionEnvironment.canUseDOM) {
+  detectEvents();
+}
+
+<span class="comment">// We use the raw {add|remove}EventListener() call because EventListener</span>
+<span class="comment">// does not know how to remove event listeners and we really should</span>
+<span class="comment">// clean up. Also, these events are not triggered in older browsers</span>
+<span class="comment">// so we should be A-OK here.</span>
+
+<span class="function"><span class="keyword">function</span> <span class="title">addEventListener</span><span class="params">(node, eventName, eventListener)</span> {</span>
+  node.addEventListener(eventName, eventListener, <span class="literal">false</span>);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">removeEventListener</span><span class="params">(node, eventName, eventListener)</span> {</span>
+  node.removeEventListener(eventName, eventListener, <span class="literal">false</span>);
+}
+
+<span class="keyword">var</span> ReactTransitionEvents = {
+  addEndEventListener: <span class="function"><span class="keyword">function</span> <span class="params">(node, eventListener)</span> {</span>
+    <span class="keyword">if</span> (endEvents.length === <span class="number">0</span>) {
+      <span class="comment">// If CSS transitions are not supported, trigger an "end animation"</span>
+      <span class="comment">// event immediately.</span>
+      window.setTimeout(eventListener, <span class="number">0</span>);
+      <span class="keyword">return</span>;
+    }
+    endEvents.forEach(<span class="function"><span class="keyword">function</span> <span class="params">(endEvent)</span> {</span>
+      addEventListener(node, endEvent, eventListener);
+    });
+  },
+
+  removeEndEventListener: <span class="function"><span class="keyword">function</span> <span class="params">(node, eventListener)</span> {</span>
+    <span class="keyword">if</span> (endEvents.length === <span class="number">0</span>) {
+      <span class="keyword">return</span>;
+    }
+    endEvents.forEach(<span class="function"><span class="keyword">function</span> <span class="params">(endEvent)</span> {</span>
+      removeEventListener(node, endEvent, eventListener);
+    });
+  }
+};
+
+module.exports = ReactTransitionEvents;</code></pre>

@@ -1,0 +1,88 @@
+<h1>ReactServerRenderingTransaction.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2014-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactServerRenderingTransaction
+ * @typechecks
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> PooledClass = require(<span class="string">'./PooledClass'</span>);
+<span class="keyword">var</span> CallbackQueue = require(<span class="string">'./CallbackQueue'</span>);
+<span class="keyword">var</span> Transaction = require(<span class="string">'./Transaction'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> emptyFunction = require(<span class="string">'fbjs/lib/emptyFunction'</span>);
+
+<span class="comment">/**
+ * Provides a `CallbackQueue` queue for collecting `onDOMReady` callbacks
+ * during the performing of the transaction.
+ */</span>
+<span class="keyword">var</span> ON_DOM_READY_QUEUEING = {
+  <span class="comment">/**
+   * Initializes the internal `onDOMReady` queue.
+   */</span>
+  initialize: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">this</span>.reactMountReady.reset();
+  },
+
+  close: emptyFunction
+};
+
+<span class="comment">/**
+ * Executed within the scope of the `Transaction` instance. Consider these as
+ * being member methods, but with an implied ordering while being isolated from
+ * each other.
+ */</span>
+<span class="keyword">var</span> TRANSACTION_WRAPPERS = [ON_DOM_READY_QUEUEING];
+
+<span class="comment">/**
+ * @class ReactServerRenderingTransaction
+ * @param {boolean} renderToStaticMarkup
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">ReactServerRenderingTransaction</span><span class="params">(renderToStaticMarkup)</span> {</span>
+  <span class="keyword">this</span>.reinitializeTransaction();
+  <span class="keyword">this</span>.renderToStaticMarkup = renderToStaticMarkup;
+  <span class="keyword">this</span>.reactMountReady = CallbackQueue.getPooled(<span class="literal">null</span>);
+  <span class="keyword">this</span>.useCreateElement = <span class="literal">false</span>;
+}
+
+<span class="keyword">var</span> Mixin = {
+  <span class="comment">/**
+   * @see Transaction
+   * @abstract
+   * @final
+   * @return {array} Empty list of operation wrap procedures.
+   */</span>
+  getTransactionWrappers: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> TRANSACTION_WRAPPERS;
+  },
+
+  <span class="comment">/**
+   * @return {object} The queue to collect `onDOMReady` callbacks with.
+   */</span>
+  getReactMountReady: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> <span class="keyword">this</span>.reactMountReady;
+  },
+
+  <span class="comment">/**
+   * `PooledClass` looks for this, and will invoke this before allowing this
+   * instance to be reused.
+   */</span>
+  destructor: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    CallbackQueue.release(<span class="keyword">this</span>.reactMountReady);
+    <span class="keyword">this</span>.reactMountReady = <span class="literal">null</span>;
+  }
+};
+
+assign(ReactServerRenderingTransaction.prototype, Transaction.Mixin, Mixin);
+
+PooledClass.addPoolingTo(ReactServerRenderingTransaction);
+
+module.exports = ReactServerRenderingTransaction;</code></pre>

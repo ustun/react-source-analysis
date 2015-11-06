@@ -1,0 +1,125 @@
+<h1>ReactInputSelection.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactInputSelection
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactDOMSelection = require(<span class="string">'./ReactDOMSelection'</span>);
+
+<span class="keyword">var</span> containsNode = require(<span class="string">'fbjs/lib/containsNode'</span>);
+<span class="keyword">var</span> focusNode = require(<span class="string">'fbjs/lib/focusNode'</span>);
+<span class="keyword">var</span> getActiveElement = require(<span class="string">'fbjs/lib/getActiveElement'</span>);
+
+<span class="function"><span class="keyword">function</span> <span class="title">isInDocument</span><span class="params">(node)</span> {</span>
+  <span class="keyword">return</span> containsNode(document.documentElement, node);
+}
+
+<span class="comment">/**
+ * @ReactInputSelection: React input selection module. Based on Selection.js,
+ * but modified to be suitable for react and has a couple of bug fixes (doesn't
+ * assume buttons have range selections allowed).
+ * Input selection module for React.
+ */</span>
+<span class="keyword">var</span> ReactInputSelection = {
+
+  hasSelectionCapabilities: <span class="function"><span class="keyword">function</span> <span class="params">(elem)</span> {</span>
+    <span class="keyword">var</span> nodeName = elem &amp;&amp; elem.nodeName &amp;&amp; elem.nodeName.toLowerCase();
+    <span class="keyword">return</span> nodeName &amp;&amp; (nodeName === <span class="string">'input'</span> &amp;&amp; elem.type === <span class="string">'text'</span> || nodeName === <span class="string">'textarea'</span> || elem.contentEditable === <span class="string">'true'</span>);
+  },
+
+  getSelectionInformation: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">var</span> focusedElem = getActiveElement();
+    <span class="keyword">return</span> {
+      focusedElem: focusedElem,
+      selectionRange: ReactInputSelection.hasSelectionCapabilities(focusedElem) ? ReactInputSelection.getSelection(focusedElem) : <span class="literal">null</span>
+    };
+  },
+
+  <span class="comment">/**
+   * @restoreSelection: If any selection information was potentially lost,
+   * restore it. This is useful when performing operations that could remove dom
+   * nodes and place them back in, resulting in focus being lost.
+   */</span>
+  restoreSelection: <span class="function"><span class="keyword">function</span> <span class="params">(priorSelectionInformation)</span> {</span>
+    <span class="keyword">var</span> curFocusedElem = getActiveElement();
+    <span class="keyword">var</span> priorFocusedElem = priorSelectionInformation.focusedElem;
+    <span class="keyword">var</span> priorSelectionRange = priorSelectionInformation.selectionRange;
+    <span class="keyword">if</span> (curFocusedElem !== priorFocusedElem &amp;&amp; isInDocument(priorFocusedElem)) {
+      <span class="keyword">if</span> (ReactInputSelection.hasSelectionCapabilities(priorFocusedElem)) {
+        ReactInputSelection.setSelection(priorFocusedElem, priorSelectionRange);
+      }
+      focusNode(priorFocusedElem);
+    }
+  },
+
+  <span class="comment">/**
+   * @getSelection: Gets the selection bounds of a focused textarea, input or
+   * contentEditable node.
+   * -@input: Look up selection bounds of this input
+   * -@return {start: selectionStart, end: selectionEnd}
+   */</span>
+  getSelection: <span class="function"><span class="keyword">function</span> <span class="params">(input)</span> {</span>
+    <span class="keyword">var</span> selection;
+
+    <span class="keyword">if</span> (<span class="string">'selectionStart'</span> <span class="keyword">in</span> input) {
+      <span class="comment">// Modern browser with input or textarea.</span>
+      selection = {
+        start: input.selectionStart,
+        end: input.selectionEnd
+      };
+    } <span class="keyword">else</span> <span class="keyword">if</span> (document.selection &amp;&amp; (input.nodeName &amp;&amp; input.nodeName.toLowerCase() === <span class="string">'input'</span>)) {
+      <span class="comment">// IE8 input.</span>
+      <span class="keyword">var</span> range = document.selection.createRange();
+      <span class="comment">// There can only be one selection per document in IE, so it must</span>
+      <span class="comment">// be in our element.</span>
+      <span class="keyword">if</span> (range.parentElement() === input) {
+        selection = {
+          start: -range.moveStart(<span class="string">'character'</span>, -input.value.length),
+          end: -range.moveEnd(<span class="string">'character'</span>, -input.value.length)
+        };
+      }
+    } <span class="keyword">else</span> {
+      <span class="comment">// Content editable or old IE textarea.</span>
+      selection = ReactDOMSelection.getOffsets(input);
+    }
+
+    <span class="keyword">return</span> selection || { start: <span class="number">0</span>, end: <span class="number">0</span> };
+  },
+
+  <span class="comment">/**
+   * @setSelection: Sets the selection bounds of a textarea or input and focuses
+   * the input.
+   * -@input     Set selection bounds of this input or textarea
+   * -@offsets   Object of same form that is returned from get*
+   */</span>
+  setSelection: <span class="function"><span class="keyword">function</span> <span class="params">(input, offsets)</span> {</span>
+    <span class="keyword">var</span> start = offsets.start;
+    <span class="keyword">var</span> end = offsets.end;
+    <span class="keyword">if</span> (<span class="keyword">typeof</span> end === <span class="string">'undefined'</span>) {
+      end = start;
+    }
+
+    <span class="keyword">if</span> (<span class="string">'selectionStart'</span> <span class="keyword">in</span> input) {
+      input.selectionStart = start;
+      input.selectionEnd = Math.min(end, input.value.length);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (document.selection &amp;&amp; (input.nodeName &amp;&amp; input.nodeName.toLowerCase() === <span class="string">'input'</span>)) {
+      <span class="keyword">var</span> range = input.createTextRange();
+      range.collapse(<span class="literal">true</span>);
+      range.moveStart(<span class="string">'character'</span>, start);
+      range.moveEnd(<span class="string">'character'</span>, end - start);
+      range.select();
+    } <span class="keyword">else</span> {
+      ReactDOMSelection.setOffsets(input, offsets);
+    }
+  }
+};
+
+module.exports = ReactInputSelection;</code></pre>

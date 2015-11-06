@@ -1,0 +1,31 @@
+<h1>ReactCurrentOwner.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactCurrentOwner
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="comment">/**
+ * Keeps track of the current owner.
+ *
+ * The current owner is the component who should own any components that are
+ * currently being constructed.
+ */</span>
+<span class="keyword">var</span> ReactCurrentOwner = {
+
+  <span class="comment">/**
+   * @internal
+   * @type {ReactComponent}
+   */</span>
+  current: <span class="literal">null</span>
+
+};
+
+module.exports = ReactCurrentOwner;</code></pre>

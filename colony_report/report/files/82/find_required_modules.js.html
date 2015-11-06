@@ -1,0 +1,36 @@
+<h1>find_required_modules.js</h1>
+<pre><code class="lang-js"><span class="keyword">var</span> babel = require(<span class="string">"babel-core"</span>);
+<span class="keyword">var</span> espree = require(<span class="string">'espree'</span>);
+<span class="keyword">var</span> fs = require(<span class="string">'fs'</span>);
+
+
+
+<span class="keyword">var</span> findRequiredFilesOrModulesFromTokens = <span class="function"><span class="keyword">function</span> <span class="params">(type, tokens)</span> {</span>
+  <span class="keyword">var</span> required = [];
+  <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; tokens.length; i++) {
+    <span class="keyword">if</span> (tokens[i].value === <span class="string">'require'</span>) {
+      <span class="keyword">if</span> (type === <span class="string">'file'</span>) {
+        required.push(tokens[i+<span class="number">2</span>].value);
+      } <span class="keyword">else</span> {
+        required.push(tokens[i-<span class="number">2</span>].value);
+      }
+    }
+  }
+  <span class="keyword">return</span> required;
+
+}
+
+<span class="comment">// var findRequiredFilesFromTokens = findRequiredFilesOrModulesFromTokens.bind(null, 'file');</span>
+<span class="keyword">var</span> findRequiredModulesFromTokens = findRequiredFilesOrModulesFromTokens.bind(<span class="literal">null</span>, <span class="string">'module'</span>);
+
+module.exports = <span class="function"><span class="keyword">function</span> <span class="params">(filePath)</span> {</span>
+  <span class="keyword">var</span> code = fs.readFileSync(filePath);
+  <span class="keyword">var</span> result = babel.transform(code);
+  <span class="comment">// var result = espree.parse(code);</span>
+  <span class="keyword">return</span> {module: filePath.replace(<span class="string">'.js'</span>, <span class="string">''</span>), modules: findRequiredModulesFromTokens(result.ast.tokens)};
+};
+
+
+
+  <span class="comment">// console.log(findRequiredModules('./React.js'))</span>
+</code></pre>

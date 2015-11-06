@@ -1,0 +1,103 @@
+<h1>ReactDOM.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDOM
+ */</span>
+
+<span class="comment">/* globals __REACT_DEVTOOLS_GLOBAL_HOOK__*/</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactDOMComponentTree = require(<span class="string">'./ReactDOMComponentTree'</span>);
+<span class="keyword">var</span> ReactDefaultInjection = require(<span class="string">'./ReactDefaultInjection'</span>);
+<span class="keyword">var</span> ReactMount = require(<span class="string">'./ReactMount'</span>);
+<span class="keyword">var</span> ReactPerf = require(<span class="string">'./ReactPerf'</span>);
+<span class="keyword">var</span> ReactReconciler = require(<span class="string">'./ReactReconciler'</span>);
+<span class="keyword">var</span> ReactUpdates = require(<span class="string">'./ReactUpdates'</span>);
+<span class="keyword">var</span> ReactVersion = require(<span class="string">'./ReactVersion'</span>);
+
+<span class="keyword">var</span> findDOMNode = require(<span class="string">'./findDOMNode'</span>);
+<span class="keyword">var</span> getNativeComponentFromComposite = require(<span class="string">'./getNativeComponentFromComposite'</span>);
+<span class="keyword">var</span> renderSubtreeIntoContainer = require(<span class="string">'./renderSubtreeIntoContainer'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+ReactDefaultInjection.inject();
+
+<span class="keyword">var</span> render = ReactPerf.measure(<span class="string">'React'</span>, <span class="string">'render'</span>, ReactMount.render);
+
+<span class="keyword">var</span> React = {
+  findDOMNode: findDOMNode,
+  render: render,
+  unmountComponentAtNode: ReactMount.unmountComponentAtNode,
+  version: ReactVersion,
+
+  <span class="comment">/* eslint-disable camelcase */</span>
+  unstable_batchedUpdates: ReactUpdates.batchedUpdates,
+  unstable_renderSubtreeIntoContainer: renderSubtreeIntoContainer
+};
+
+<span class="comment">// Inject the runtime into a devtools global hook regardless of browser.</span>
+<span class="comment">// Allows for debugging when the hook is injected on the page.</span>
+<span class="comment">/* eslint-enable camelcase */</span>
+<span class="keyword">if</span> (<span class="keyword">typeof</span> __REACT_DEVTOOLS_GLOBAL_HOOK__ !== <span class="string">'undefined'</span> &amp;&amp; <span class="keyword">typeof</span> __REACT_DEVTOOLS_GLOBAL_HOOK__.inject === <span class="string">'function'</span>) {
+  __REACT_DEVTOOLS_GLOBAL_HOOK__.inject({
+    ComponentTree: {
+      getClosestInstanceFromNode: ReactDOMComponentTree.getClosestInstanceFromNode,
+      getNodeFromInstance: <span class="function"><span class="keyword">function</span> <span class="params">(inst)</span> {</span>
+        <span class="comment">// inst is an internal instance (but could be a composite)</span>
+        <span class="keyword">if</span> (inst._renderedComponent) {
+          inst = getNativeComponentFromComposite(inst);
+        }
+        <span class="keyword">if</span> (inst) {
+          <span class="keyword">return</span> ReactDOMComponentTree.getNodeFromInstance(inst);
+        } <span class="keyword">else</span> {
+          <span class="keyword">return</span> <span class="literal">null</span>;
+        }
+      }
+    },
+    Mount: ReactMount,
+    Reconciler: ReactReconciler
+  });
+}
+
+<span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+  <span class="keyword">var</span> ExecutionEnvironment = require(<span class="string">'fbjs/lib/ExecutionEnvironment'</span>);
+  <span class="keyword">if</span> (ExecutionEnvironment.canUseDOM &amp;&amp; window.top === window.self) {
+
+    <span class="comment">// First check if devtools is not installed</span>
+    <span class="keyword">if</span> (<span class="keyword">typeof</span> __REACT_DEVTOOLS_GLOBAL_HOOK__ === <span class="string">'undefined'</span>) {
+      <span class="comment">// If we're in Chrome or Firefox, provide a download link if not installed.</span>
+      <span class="keyword">if</span> (navigator.userAgent.indexOf(<span class="string">'Chrome'</span>) > -<span class="number">1</span> &amp;&amp; navigator.userAgent.indexOf(<span class="string">'Edge'</span>) === -<span class="number">1</span> || navigator.userAgent.indexOf(<span class="string">'Firefox'</span>) > -<span class="number">1</span>) {
+        console.debug(<span class="string">'Download the React DevTools for a better development experience: '</span> + <span class="string">'https://fb.me/react-devtools'</span>);
+      }
+    }
+
+    <span class="keyword">var</span> testFunc = <span class="function"><span class="keyword">function</span> <span class="title">testFn</span><span class="params">()</span> {</span>};
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning((testFunc.name || testFunc.toString()).indexOf(<span class="string">'testFn'</span>) !== -<span class="number">1</span>, <span class="string">'It looks like you\'re using a minified copy of the development build '</span> + <span class="string">'of React. When deploying React apps to production, make sure to use '</span> + <span class="string">'the production build which skips development warnings and is faster. '</span> + <span class="string">'See https://fb.me/react-minification for more details.'</span>) : <span class="literal">undefined</span>;
+
+    <span class="comment">// If we're in IE8, check to see if we are in compatibility mode and provide</span>
+    <span class="comment">// information on preventing compatibility mode</span>
+    <span class="keyword">var</span> ieCompatibilityMode = document.documentMode &amp;&amp; document.documentMode &lt; <span class="number">8</span>;
+
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(!ieCompatibilityMode, <span class="string">'Internet Explorer is running in compatibility mode; please add the '</span> + <span class="string">'following tag to your HTML to prevent this from happening: '</span> + <span class="string">'&lt;meta http-equiv="X-UA-Compatible" content="IE=edge" />'</span>) : <span class="literal">undefined</span>;
+
+    <span class="keyword">var</span> expectedFeatures = [
+    <span class="comment">// shims</span>
+    Array.isArray, Array.prototype.every, Array.prototype.forEach, Array.prototype.indexOf, Array.prototype.map, Date.now, Function.prototype.bind, Object.keys, String.prototype.split, String.prototype.trim];
+
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; expectedFeatures.length; i++) {
+      <span class="keyword">if</span> (!expectedFeatures[i]) {
+        process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'One or more ES5 shims expected by React are not available: '</span> + <span class="string">'https://fb.me/react-warning-polyfills'</span>) : <span class="literal">undefined</span>;
+        <span class="keyword">break</span>;
+      }
+    }
+  }
+}
+
+module.exports = React;</code></pre>

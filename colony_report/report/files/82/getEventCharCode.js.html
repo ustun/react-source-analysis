@@ -1,0 +1,51 @@
+<h1>getEventCharCode.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule getEventCharCode
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="comment">/**
+ * `charCode` represents the actual "character code" and is safe to use with
+ * `String.fromCharCode`. As such, only keys that correspond to printable
+ * characters produce a valid `charCode`, the only exception to this is Enter.
+ * The Tab-key is considered non-printable and does not have a `charCode`,
+ * presumably because it does not produce a tab-character in browsers.
+ *
+ * @param {object} nativeEvent Native browser event.
+ * @return {number} Normalized `charCode` property.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getEventCharCode</span><span class="params">(nativeEvent)</span> {</span>
+  <span class="keyword">var</span> charCode;
+  <span class="keyword">var</span> keyCode = nativeEvent.keyCode;
+
+  <span class="keyword">if</span> (<span class="string">'charCode'</span> <span class="keyword">in</span> nativeEvent) {
+    charCode = nativeEvent.charCode;
+
+    <span class="comment">// FF does not set `charCode` for the Enter-key, check against `keyCode`.</span>
+    <span class="keyword">if</span> (charCode === <span class="number">0</span> &amp;&amp; keyCode === <span class="number">13</span>) {
+      charCode = <span class="number">13</span>;
+    }
+  } <span class="keyword">else</span> {
+    <span class="comment">// IE8 does not implement `charCode`, but `keyCode` has the correct value.</span>
+    charCode = keyCode;
+  }
+
+  <span class="comment">// Some non-printable keys are reported in `charCode`/`keyCode`, discard them.</span>
+  <span class="comment">// Must not discard the (non-)printable Enter-key.</span>
+  <span class="keyword">if</span> (charCode >= <span class="number">32</span> || charCode === <span class="number">13</span>) {
+    <span class="keyword">return</span> charCode;
+  }
+
+  <span class="keyword">return</span> <span class="number">0</span>;
+}
+
+module.exports = getEventCharCode;</code></pre>

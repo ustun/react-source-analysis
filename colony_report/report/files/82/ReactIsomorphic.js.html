@@ -1,0 +1,75 @@
+<h1>ReactIsomorphic.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactIsomorphic
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactChildren = require(<span class="string">'./ReactChildren'</span>);
+<span class="keyword">var</span> ReactComponent = require(<span class="string">'./ReactComponent'</span>);
+<span class="keyword">var</span> ReactClass = require(<span class="string">'./ReactClass'</span>);
+<span class="keyword">var</span> ReactDOMFactories = require(<span class="string">'./ReactDOMFactories'</span>);
+<span class="keyword">var</span> ReactElement = require(<span class="string">'./ReactElement'</span>);
+<span class="keyword">var</span> ReactElementValidator = require(<span class="string">'./ReactElementValidator'</span>);
+<span class="keyword">var</span> ReactPropTypes = require(<span class="string">'./ReactPropTypes'</span>);
+<span class="keyword">var</span> ReactVersion = require(<span class="string">'./ReactVersion'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> onlyChild = require(<span class="string">'./onlyChild'</span>);
+
+<span class="keyword">var</span> createElement = ReactElement.createElement;
+<span class="keyword">var</span> createFactory = ReactElement.createFactory;
+<span class="keyword">var</span> cloneElement = ReactElement.cloneElement;
+
+<span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+  createElement = ReactElementValidator.createElement;
+  createFactory = ReactElementValidator.createFactory;
+  cloneElement = ReactElementValidator.cloneElement;
+}
+
+<span class="keyword">var</span> React = {
+
+  <span class="comment">// Modern</span>
+
+  Children: {
+    map: ReactChildren.map,
+    forEach: ReactChildren.forEach,
+    count: ReactChildren.count,
+    toArray: ReactChildren.toArray,
+    only: onlyChild
+  },
+
+  Component: ReactComponent,
+
+  createElement: createElement,
+  cloneElement: cloneElement,
+  isValidElement: ReactElement.isValidElement,
+
+  <span class="comment">// Classic</span>
+
+  PropTypes: ReactPropTypes,
+  createClass: ReactClass.createClass,
+  createFactory: createFactory,
+  createMixin: <span class="function"><span class="keyword">function</span> <span class="params">(mixin)</span> {</span>
+    <span class="comment">// Currently a noop. Will be used to validate and trace mixins.</span>
+    <span class="keyword">return</span> mixin;
+  },
+
+  <span class="comment">// This looks DOM specific but these are actually isomorphic helpers</span>
+  <span class="comment">// since they are just generating DOM strings.</span>
+  DOM: ReactDOMFactories,
+
+  version: ReactVersion,
+
+  <span class="comment">// Hook for JSX spread, don't use this for anything else.</span>
+  __spread: assign
+};
+
+module.exports = React;</code></pre>

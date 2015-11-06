@@ -1,0 +1,184 @@
+<h1>ReactDOMComponentTree.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDOMComponentTree
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> DOMProperty = require(<span class="string">'./DOMProperty'</span>);
+<span class="keyword">var</span> ReactDOMComponentFlags = require(<span class="string">'./ReactDOMComponentFlags'</span>);
+
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+
+<span class="keyword">var</span> ATTR_NAME = DOMProperty.ID_ATTRIBUTE_NAME;
+<span class="keyword">var</span> Flags = ReactDOMComponentFlags;
+
+<span class="keyword">var</span> internalInstanceKey = <span class="string">'__reactInternalInstance$'</span> + Math.random().toString(<span class="number">36</span>).slice(<span class="number">2</span>);
+
+<span class="comment">/**
+ * Drill down (through composites and empty components) until we get a native or
+ * native text component.
+ *
+ * This is pretty polymorphic but unavoidable with the current structure we have
+ * for `_renderedChildren`.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getRenderedNativeOrTextFromComponent</span><span class="params">(component)</span> {</span>
+  <span class="keyword">var</span> rendered;
+  <span class="keyword">while</span> (rendered = component._renderedComponent) {
+    component = rendered;
+  }
+  <span class="keyword">return</span> component;
+}
+
+<span class="comment">/**
+ * Populate `_nativeNode` on the rendered native/text component with the given
+ * DOM node. The passed `inst` can be a composite.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">precacheNode</span><span class="params">(inst, node)</span> {</span>
+  <span class="keyword">var</span> nativeInst = getRenderedNativeOrTextFromComponent(inst);
+  nativeInst._nativeNode = node;
+  node[internalInstanceKey] = nativeInst;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">uncacheNode</span><span class="params">(inst)</span> {</span>
+  <span class="keyword">var</span> node = inst._nativeNode;
+  <span class="keyword">if</span> (node) {
+    <span class="keyword">delete</span> node[internalInstanceKey];
+    inst._nativeNode = <span class="literal">null</span>;
+  }
+}
+
+<span class="comment">/**
+ * Populate `_nativeNode` on each child of `inst`, assuming that the children
+ * match up with the DOM (element) children of `node`.
+ *
+ * We cache entire levels at once to avoid an n^2 problem where we access the
+ * children of a node sequentially and have to walk from the start to our target
+ * node every time.
+ *
+ * Since we update `_renderedChildren` and the actual DOM at (slightly)
+ * different times, we could race here and not get the
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">precacheChildNodes</span><span class="params">(inst, node)</span> {</span>
+  <span class="keyword">if</span> (inst._flags &amp; Flags.hasCachedChildNodes) {
+    <span class="keyword">return</span>;
+  }
+  <span class="keyword">var</span> children = inst._renderedChildren;
+  <span class="keyword">var</span> childNode = node.firstChild;
+  outer: <span class="keyword">for</span> (<span class="keyword">var</span> name <span class="keyword">in</span> children) {
+    <span class="keyword">if</span> (!children.hasOwnProperty(name)) {
+      <span class="keyword">continue</span>;
+    }
+    <span class="keyword">var</span> childInst = children[name];
+    <span class="keyword">var</span> childID = getRenderedNativeOrTextFromComponent(childInst)._domID;
+    <span class="keyword">if</span> (childID == <span class="literal">null</span>) {
+      <span class="comment">// We're currently unmounting this child in ReactMultiChild; skip it.</span>
+      <span class="keyword">continue</span>;
+    }
+    <span class="comment">// We assume the child nodes are in the same order as the child instances.</span>
+    <span class="keyword">for</span> (; childNode !== <span class="literal">null</span>; childNode = childNode.nextSibling) {
+      <span class="keyword">if</span> (childNode.nodeType === <span class="number">1</span> &amp;&amp; childNode.getAttribute(ATTR_NAME) === String(childID)) {
+        precacheNode(childInst, childNode);
+        <span class="keyword">continue</span> outer;
+      }
+    }
+    <span class="comment">// We reached the end of the DOM children without finding an ID match.</span>
+    !<span class="literal">false</span> ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Unable to find element with ID %s.'</span>, childID) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  }
+  inst._flags |= Flags.hasCachedChildNodes;
+}
+
+<span class="comment">/**
+ * Given a DOM node, return the closest ReactDOMComponent or
+ * ReactDOMTextComponent instance ancestor.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getClosestInstanceFromNode</span><span class="params">(node)</span> {</span>
+  <span class="keyword">if</span> (node[internalInstanceKey]) {
+    <span class="keyword">return</span> node[internalInstanceKey];
+  }
+
+  <span class="comment">// Walk up the tree until we find an ancestor whose instance we have cached.</span>
+  <span class="keyword">var</span> parents = [];
+  <span class="keyword">while</span> (!node[internalInstanceKey]) {
+    parents.push(node);
+    <span class="keyword">if</span> (node.parentNode) {
+      node = node.parentNode;
+    } <span class="keyword">else</span> {
+      <span class="comment">// Top of the tree. This node must not be part of a React tree (or is</span>
+      <span class="comment">// unmounted, potentially).</span>
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    }
+  }
+
+  <span class="keyword">var</span> closest;
+  <span class="keyword">var</span> inst;
+  <span class="keyword">for</span> (; node &amp;&amp; (inst = node[internalInstanceKey]); node = parents.pop()) {
+    closest = inst;
+    <span class="keyword">if</span> (parents.length) {
+      precacheChildNodes(inst, node);
+    }
+  }
+
+  <span class="keyword">return</span> closest;
+}
+
+<span class="comment">/**
+ * Given a DOM node, return the ReactDOMComponent or ReactDOMTextComponent
+ * instance, or null if the node was not rendered by this React.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getInstanceFromNode</span><span class="params">(node)</span> {</span>
+  <span class="keyword">var</span> inst = getClosestInstanceFromNode(node);
+  <span class="keyword">if</span> (inst != <span class="literal">null</span> &amp;&amp; inst._nativeNode === node) {
+    <span class="keyword">return</span> inst;
+  } <span class="keyword">else</span> {
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+}
+
+<span class="comment">/**
+ * Given a ReactDOMComponent or ReactDOMTextComponent, return the corresponding
+ * DOM node.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getNodeFromInstance</span><span class="params">(inst)</span> {</span>
+  <span class="comment">// Without this first invariant, passing a non-DOM-component triggers the next</span>
+  <span class="comment">// invariant for a missing parent, which is super confusing.</span>
+  !(inst._nativeNode !== <span class="literal">undefined</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'getNodeFromInstance: Invalid argument.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+  <span class="keyword">if</span> (inst._nativeNode) {
+    <span class="keyword">return</span> inst._nativeNode;
+  }
+
+  <span class="comment">// Walk up the tree until we find an ancestor whose DOM node we have cached.</span>
+  <span class="keyword">var</span> parents = [];
+  <span class="keyword">while</span> (!inst._nativeNode) {
+    parents.push(inst);
+    !inst._nativeParent ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'React DOM tree root should always have a node reference.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    inst = inst._nativeParent;
+  }
+
+  <span class="comment">// Now parents contains each ancestor that does *not* have a cached native</span>
+  <span class="comment">// node, and `inst` is the deepest ancestor that does.</span>
+  <span class="keyword">for</span> (; parents.length; inst = parents.pop()) {
+    precacheChildNodes(inst, inst._nativeNode);
+  }
+
+  <span class="keyword">return</span> inst._nativeNode;
+}
+
+<span class="keyword">var</span> ReactDOMComponentTree = {
+  getClosestInstanceFromNode: getClosestInstanceFromNode,
+  getInstanceFromNode: getInstanceFromNode,
+  getNodeFromInstance: getNodeFromInstance,
+  precacheChildNodes: precacheChildNodes,
+  precacheNode: precacheNode,
+  uncacheNode: uncacheNode
+};
+
+module.exports = ReactDOMComponentTree;</code></pre>

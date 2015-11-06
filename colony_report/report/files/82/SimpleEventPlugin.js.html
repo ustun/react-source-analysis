@@ -1,0 +1,590 @@
+<h1>SimpleEventPlugin.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule SimpleEventPlugin
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> EventConstants = require(<span class="string">'./EventConstants'</span>);
+<span class="keyword">var</span> EventListener = require(<span class="string">'fbjs/lib/EventListener'</span>);
+<span class="keyword">var</span> EventPropagators = require(<span class="string">'./EventPropagators'</span>);
+<span class="keyword">var</span> ReactDOMComponentTree = require(<span class="string">'./ReactDOMComponentTree'</span>);
+<span class="keyword">var</span> SyntheticClipboardEvent = require(<span class="string">'./SyntheticClipboardEvent'</span>);
+<span class="keyword">var</span> SyntheticEvent = require(<span class="string">'./SyntheticEvent'</span>);
+<span class="keyword">var</span> SyntheticFocusEvent = require(<span class="string">'./SyntheticFocusEvent'</span>);
+<span class="keyword">var</span> SyntheticKeyboardEvent = require(<span class="string">'./SyntheticKeyboardEvent'</span>);
+<span class="keyword">var</span> SyntheticMouseEvent = require(<span class="string">'./SyntheticMouseEvent'</span>);
+<span class="keyword">var</span> SyntheticDragEvent = require(<span class="string">'./SyntheticDragEvent'</span>);
+<span class="keyword">var</span> SyntheticTouchEvent = require(<span class="string">'./SyntheticTouchEvent'</span>);
+<span class="keyword">var</span> SyntheticUIEvent = require(<span class="string">'./SyntheticUIEvent'</span>);
+<span class="keyword">var</span> SyntheticWheelEvent = require(<span class="string">'./SyntheticWheelEvent'</span>);
+
+<span class="keyword">var</span> emptyFunction = require(<span class="string">'fbjs/lib/emptyFunction'</span>);
+<span class="keyword">var</span> getEventCharCode = require(<span class="string">'./getEventCharCode'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+<span class="keyword">var</span> keyOf = require(<span class="string">'fbjs/lib/keyOf'</span>);
+
+<span class="keyword">var</span> topLevelTypes = EventConstants.topLevelTypes;
+
+<span class="keyword">var</span> eventTypes = {
+  abort: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onAbort: <span class="literal">true</span> }),
+      captured: keyOf({ onAbortCapture: <span class="literal">true</span> })
+    }
+  },
+  blur: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onBlur: <span class="literal">true</span> }),
+      captured: keyOf({ onBlurCapture: <span class="literal">true</span> })
+    }
+  },
+  canPlay: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onCanPlay: <span class="literal">true</span> }),
+      captured: keyOf({ onCanPlayCapture: <span class="literal">true</span> })
+    }
+  },
+  canPlayThrough: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onCanPlayThrough: <span class="literal">true</span> }),
+      captured: keyOf({ onCanPlayThroughCapture: <span class="literal">true</span> })
+    }
+  },
+  click: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onClick: <span class="literal">true</span> }),
+      captured: keyOf({ onClickCapture: <span class="literal">true</span> })
+    }
+  },
+  contextMenu: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onContextMenu: <span class="literal">true</span> }),
+      captured: keyOf({ onContextMenuCapture: <span class="literal">true</span> })
+    }
+  },
+  copy: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onCopy: <span class="literal">true</span> }),
+      captured: keyOf({ onCopyCapture: <span class="literal">true</span> })
+    }
+  },
+  cut: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onCut: <span class="literal">true</span> }),
+      captured: keyOf({ onCutCapture: <span class="literal">true</span> })
+    }
+  },
+  doubleClick: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onDoubleClick: <span class="literal">true</span> }),
+      captured: keyOf({ onDoubleClickCapture: <span class="literal">true</span> })
+    }
+  },
+  drag: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onDrag: <span class="literal">true</span> }),
+      captured: keyOf({ onDragCapture: <span class="literal">true</span> })
+    }
+  },
+  dragEnd: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onDragEnd: <span class="literal">true</span> }),
+      captured: keyOf({ onDragEndCapture: <span class="literal">true</span> })
+    }
+  },
+  dragEnter: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onDragEnter: <span class="literal">true</span> }),
+      captured: keyOf({ onDragEnterCapture: <span class="literal">true</span> })
+    }
+  },
+  dragExit: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onDragExit: <span class="literal">true</span> }),
+      captured: keyOf({ onDragExitCapture: <span class="literal">true</span> })
+    }
+  },
+  dragLeave: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onDragLeave: <span class="literal">true</span> }),
+      captured: keyOf({ onDragLeaveCapture: <span class="literal">true</span> })
+    }
+  },
+  dragOver: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onDragOver: <span class="literal">true</span> }),
+      captured: keyOf({ onDragOverCapture: <span class="literal">true</span> })
+    }
+  },
+  dragStart: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onDragStart: <span class="literal">true</span> }),
+      captured: keyOf({ onDragStartCapture: <span class="literal">true</span> })
+    }
+  },
+  drop: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onDrop: <span class="literal">true</span> }),
+      captured: keyOf({ onDropCapture: <span class="literal">true</span> })
+    }
+  },
+  durationChange: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onDurationChange: <span class="literal">true</span> }),
+      captured: keyOf({ onDurationChangeCapture: <span class="literal">true</span> })
+    }
+  },
+  emptied: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onEmptied: <span class="literal">true</span> }),
+      captured: keyOf({ onEmptiedCapture: <span class="literal">true</span> })
+    }
+  },
+  encrypted: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onEncrypted: <span class="literal">true</span> }),
+      captured: keyOf({ onEncryptedCapture: <span class="literal">true</span> })
+    }
+  },
+  ended: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onEnded: <span class="literal">true</span> }),
+      captured: keyOf({ onEndedCapture: <span class="literal">true</span> })
+    }
+  },
+  error: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onError: <span class="literal">true</span> }),
+      captured: keyOf({ onErrorCapture: <span class="literal">true</span> })
+    }
+  },
+  focus: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onFocus: <span class="literal">true</span> }),
+      captured: keyOf({ onFocusCapture: <span class="literal">true</span> })
+    }
+  },
+  input: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onInput: <span class="literal">true</span> }),
+      captured: keyOf({ onInputCapture: <span class="literal">true</span> })
+    }
+  },
+  invalid: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onInvalid: <span class="literal">true</span> }),
+      captured: keyOf({ onInvalidCapture: <span class="literal">true</span> })
+    }
+  },
+  keyDown: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onKeyDown: <span class="literal">true</span> }),
+      captured: keyOf({ onKeyDownCapture: <span class="literal">true</span> })
+    }
+  },
+  keyPress: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onKeyPress: <span class="literal">true</span> }),
+      captured: keyOf({ onKeyPressCapture: <span class="literal">true</span> })
+    }
+  },
+  keyUp: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onKeyUp: <span class="literal">true</span> }),
+      captured: keyOf({ onKeyUpCapture: <span class="literal">true</span> })
+    }
+  },
+  load: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onLoad: <span class="literal">true</span> }),
+      captured: keyOf({ onLoadCapture: <span class="literal">true</span> })
+    }
+  },
+  loadedData: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onLoadedData: <span class="literal">true</span> }),
+      captured: keyOf({ onLoadedDataCapture: <span class="literal">true</span> })
+    }
+  },
+  loadedMetadata: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onLoadedMetadata: <span class="literal">true</span> }),
+      captured: keyOf({ onLoadedMetadataCapture: <span class="literal">true</span> })
+    }
+  },
+  loadStart: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onLoadStart: <span class="literal">true</span> }),
+      captured: keyOf({ onLoadStartCapture: <span class="literal">true</span> })
+    }
+  },
+  <span class="comment">// Note: We do not allow listening to mouseOver events. Instead, use the</span>
+  <span class="comment">// onMouseEnter/onMouseLeave created by `EnterLeaveEventPlugin`.</span>
+  mouseDown: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onMouseDown: <span class="literal">true</span> }),
+      captured: keyOf({ onMouseDownCapture: <span class="literal">true</span> })
+    }
+  },
+  mouseMove: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onMouseMove: <span class="literal">true</span> }),
+      captured: keyOf({ onMouseMoveCapture: <span class="literal">true</span> })
+    }
+  },
+  mouseOut: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onMouseOut: <span class="literal">true</span> }),
+      captured: keyOf({ onMouseOutCapture: <span class="literal">true</span> })
+    }
+  },
+  mouseOver: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onMouseOver: <span class="literal">true</span> }),
+      captured: keyOf({ onMouseOverCapture: <span class="literal">true</span> })
+    }
+  },
+  mouseUp: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onMouseUp: <span class="literal">true</span> }),
+      captured: keyOf({ onMouseUpCapture: <span class="literal">true</span> })
+    }
+  },
+  paste: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onPaste: <span class="literal">true</span> }),
+      captured: keyOf({ onPasteCapture: <span class="literal">true</span> })
+    }
+  },
+  pause: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onPause: <span class="literal">true</span> }),
+      captured: keyOf({ onPauseCapture: <span class="literal">true</span> })
+    }
+  },
+  play: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onPlay: <span class="literal">true</span> }),
+      captured: keyOf({ onPlayCapture: <span class="literal">true</span> })
+    }
+  },
+  playing: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onPlaying: <span class="literal">true</span> }),
+      captured: keyOf({ onPlayingCapture: <span class="literal">true</span> })
+    }
+  },
+  progress: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onProgress: <span class="literal">true</span> }),
+      captured: keyOf({ onProgressCapture: <span class="literal">true</span> })
+    }
+  },
+  rateChange: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onRateChange: <span class="literal">true</span> }),
+      captured: keyOf({ onRateChangeCapture: <span class="literal">true</span> })
+    }
+  },
+  reset: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onReset: <span class="literal">true</span> }),
+      captured: keyOf({ onResetCapture: <span class="literal">true</span> })
+    }
+  },
+  scroll: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onScroll: <span class="literal">true</span> }),
+      captured: keyOf({ onScrollCapture: <span class="literal">true</span> })
+    }
+  },
+  seeked: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onSeeked: <span class="literal">true</span> }),
+      captured: keyOf({ onSeekedCapture: <span class="literal">true</span> })
+    }
+  },
+  seeking: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onSeeking: <span class="literal">true</span> }),
+      captured: keyOf({ onSeekingCapture: <span class="literal">true</span> })
+    }
+  },
+  stalled: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onStalled: <span class="literal">true</span> }),
+      captured: keyOf({ onStalledCapture: <span class="literal">true</span> })
+    }
+  },
+  submit: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onSubmit: <span class="literal">true</span> }),
+      captured: keyOf({ onSubmitCapture: <span class="literal">true</span> })
+    }
+  },
+  suspend: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onSuspend: <span class="literal">true</span> }),
+      captured: keyOf({ onSuspendCapture: <span class="literal">true</span> })
+    }
+  },
+  timeUpdate: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onTimeUpdate: <span class="literal">true</span> }),
+      captured: keyOf({ onTimeUpdateCapture: <span class="literal">true</span> })
+    }
+  },
+  touchCancel: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onTouchCancel: <span class="literal">true</span> }),
+      captured: keyOf({ onTouchCancelCapture: <span class="literal">true</span> })
+    }
+  },
+  touchEnd: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onTouchEnd: <span class="literal">true</span> }),
+      captured: keyOf({ onTouchEndCapture: <span class="literal">true</span> })
+    }
+  },
+  touchMove: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onTouchMove: <span class="literal">true</span> }),
+      captured: keyOf({ onTouchMoveCapture: <span class="literal">true</span> })
+    }
+  },
+  touchStart: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onTouchStart: <span class="literal">true</span> }),
+      captured: keyOf({ onTouchStartCapture: <span class="literal">true</span> })
+    }
+  },
+  volumeChange: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onVolumeChange: <span class="literal">true</span> }),
+      captured: keyOf({ onVolumeChangeCapture: <span class="literal">true</span> })
+    }
+  },
+  waiting: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onWaiting: <span class="literal">true</span> }),
+      captured: keyOf({ onWaitingCapture: <span class="literal">true</span> })
+    }
+  },
+  wheel: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onWheel: <span class="literal">true</span> }),
+      captured: keyOf({ onWheelCapture: <span class="literal">true</span> })
+    }
+  }
+};
+
+<span class="keyword">var</span> topLevelEventsToDispatchConfig = {
+  topAbort: eventTypes.abort,
+  topBlur: eventTypes.blur,
+  topCanPlay: eventTypes.canPlay,
+  topCanPlayThrough: eventTypes.canPlayThrough,
+  topClick: eventTypes.click,
+  topContextMenu: eventTypes.contextMenu,
+  topCopy: eventTypes.copy,
+  topCut: eventTypes.cut,
+  topDoubleClick: eventTypes.doubleClick,
+  topDrag: eventTypes.drag,
+  topDragEnd: eventTypes.dragEnd,
+  topDragEnter: eventTypes.dragEnter,
+  topDragExit: eventTypes.dragExit,
+  topDragLeave: eventTypes.dragLeave,
+  topDragOver: eventTypes.dragOver,
+  topDragStart: eventTypes.dragStart,
+  topDrop: eventTypes.drop,
+  topDurationChange: eventTypes.durationChange,
+  topEmptied: eventTypes.emptied,
+  topEncrypted: eventTypes.encrypted,
+  topEnded: eventTypes.ended,
+  topError: eventTypes.error,
+  topFocus: eventTypes.focus,
+  topInput: eventTypes.input,
+  topInvalid: eventTypes.invalid,
+  topKeyDown: eventTypes.keyDown,
+  topKeyPress: eventTypes.keyPress,
+  topKeyUp: eventTypes.keyUp,
+  topLoad: eventTypes.load,
+  topLoadedData: eventTypes.loadedData,
+  topLoadedMetadata: eventTypes.loadedMetadata,
+  topLoadStart: eventTypes.loadStart,
+  topMouseDown: eventTypes.mouseDown,
+  topMouseMove: eventTypes.mouseMove,
+  topMouseOut: eventTypes.mouseOut,
+  topMouseOver: eventTypes.mouseOver,
+  topMouseUp: eventTypes.mouseUp,
+  topPaste: eventTypes.paste,
+  topPause: eventTypes.pause,
+  topPlay: eventTypes.play,
+  topPlaying: eventTypes.playing,
+  topProgress: eventTypes.progress,
+  topRateChange: eventTypes.rateChange,
+  topReset: eventTypes.reset,
+  topScroll: eventTypes.scroll,
+  topSeeked: eventTypes.seeked,
+  topSeeking: eventTypes.seeking,
+  topStalled: eventTypes.stalled,
+  topSubmit: eventTypes.submit,
+  topSuspend: eventTypes.suspend,
+  topTimeUpdate: eventTypes.timeUpdate,
+  topTouchCancel: eventTypes.touchCancel,
+  topTouchEnd: eventTypes.touchEnd,
+  topTouchMove: eventTypes.touchMove,
+  topTouchStart: eventTypes.touchStart,
+  topVolumeChange: eventTypes.volumeChange,
+  topWaiting: eventTypes.waiting,
+  topWheel: eventTypes.wheel
+};
+
+<span class="keyword">for</span> (<span class="keyword">var</span> type <span class="keyword">in</span> topLevelEventsToDispatchConfig) {
+  topLevelEventsToDispatchConfig[type].dependencies = [type];
+}
+
+<span class="keyword">var</span> ON_CLICK_KEY = keyOf({ onClick: <span class="literal">null</span> });
+<span class="keyword">var</span> onClickListeners = {};
+
+<span class="keyword">var</span> SimpleEventPlugin = {
+
+  eventTypes: eventTypes,
+
+  extractEvents: <span class="function"><span class="keyword">function</span> <span class="params">(topLevelType, targetInst, nativeEvent, nativeEventTarget)</span> {</span>
+    <span class="keyword">var</span> dispatchConfig = topLevelEventsToDispatchConfig[topLevelType];
+    <span class="keyword">if</span> (!dispatchConfig) {
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    }
+    <span class="keyword">var</span> EventConstructor;
+    <span class="keyword">switch</span> (topLevelType) {
+      <span class="keyword">case</span> topLevelTypes.topAbort:
+      <span class="keyword">case</span> topLevelTypes.topCanPlay:
+      <span class="keyword">case</span> topLevelTypes.topCanPlayThrough:
+      <span class="keyword">case</span> topLevelTypes.topDurationChange:
+      <span class="keyword">case</span> topLevelTypes.topEmptied:
+      <span class="keyword">case</span> topLevelTypes.topEncrypted:
+      <span class="keyword">case</span> topLevelTypes.topEnded:
+      <span class="keyword">case</span> topLevelTypes.topError:
+      <span class="keyword">case</span> topLevelTypes.topInput:
+      <span class="keyword">case</span> topLevelTypes.topInvalid:
+      <span class="keyword">case</span> topLevelTypes.topLoad:
+      <span class="keyword">case</span> topLevelTypes.topLoadedData:
+      <span class="keyword">case</span> topLevelTypes.topLoadedMetadata:
+      <span class="keyword">case</span> topLevelTypes.topLoadStart:
+      <span class="keyword">case</span> topLevelTypes.topPause:
+      <span class="keyword">case</span> topLevelTypes.topPlay:
+      <span class="keyword">case</span> topLevelTypes.topPlaying:
+      <span class="keyword">case</span> topLevelTypes.topProgress:
+      <span class="keyword">case</span> topLevelTypes.topRateChange:
+      <span class="keyword">case</span> topLevelTypes.topReset:
+      <span class="keyword">case</span> topLevelTypes.topSeeked:
+      <span class="keyword">case</span> topLevelTypes.topSeeking:
+      <span class="keyword">case</span> topLevelTypes.topStalled:
+      <span class="keyword">case</span> topLevelTypes.topSubmit:
+      <span class="keyword">case</span> topLevelTypes.topSuspend:
+      <span class="keyword">case</span> topLevelTypes.topTimeUpdate:
+      <span class="keyword">case</span> topLevelTypes.topVolumeChange:
+      <span class="keyword">case</span> topLevelTypes.topWaiting:
+        <span class="comment">// HTML Events</span>
+        <span class="comment">// @see http://www.w3.org/TR/html5/index.html#events-0</span>
+        EventConstructor = SyntheticEvent;
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> topLevelTypes.topKeyPress:
+        <span class="comment">// Firefox creates a keypress event for function keys too. This removes</span>
+        <span class="comment">// the unwanted keypress events. Enter is however both printable and</span>
+        <span class="comment">// non-printable. One would expect Tab to be as well (but it isn't).</span>
+        <span class="keyword">if</span> (getEventCharCode(nativeEvent) === <span class="number">0</span>) {
+          <span class="keyword">return</span> <span class="literal">null</span>;
+        }
+      <span class="comment">/* falls through */</span>
+      <span class="keyword">case</span> topLevelTypes.topKeyDown:
+      <span class="keyword">case</span> topLevelTypes.topKeyUp:
+        EventConstructor = SyntheticKeyboardEvent;
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> topLevelTypes.topBlur:
+      <span class="keyword">case</span> topLevelTypes.topFocus:
+        EventConstructor = SyntheticFocusEvent;
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> topLevelTypes.topClick:
+        <span class="comment">// Firefox creates a click event on right mouse clicks. This removes the</span>
+        <span class="comment">// unwanted click events.</span>
+        <span class="keyword">if</span> (nativeEvent.button === <span class="number">2</span>) {
+          <span class="keyword">return</span> <span class="literal">null</span>;
+        }
+      <span class="comment">/* falls through */</span>
+      <span class="keyword">case</span> topLevelTypes.topContextMenu:
+      <span class="keyword">case</span> topLevelTypes.topDoubleClick:
+      <span class="keyword">case</span> topLevelTypes.topMouseDown:
+      <span class="keyword">case</span> topLevelTypes.topMouseMove:
+      <span class="keyword">case</span> topLevelTypes.topMouseOut:
+      <span class="keyword">case</span> topLevelTypes.topMouseOver:
+      <span class="keyword">case</span> topLevelTypes.topMouseUp:
+        EventConstructor = SyntheticMouseEvent;
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> topLevelTypes.topDrag:
+      <span class="keyword">case</span> topLevelTypes.topDragEnd:
+      <span class="keyword">case</span> topLevelTypes.topDragEnter:
+      <span class="keyword">case</span> topLevelTypes.topDragExit:
+      <span class="keyword">case</span> topLevelTypes.topDragLeave:
+      <span class="keyword">case</span> topLevelTypes.topDragOver:
+      <span class="keyword">case</span> topLevelTypes.topDragStart:
+      <span class="keyword">case</span> topLevelTypes.topDrop:
+        EventConstructor = SyntheticDragEvent;
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> topLevelTypes.topTouchCancel:
+      <span class="keyword">case</span> topLevelTypes.topTouchEnd:
+      <span class="keyword">case</span> topLevelTypes.topTouchMove:
+      <span class="keyword">case</span> topLevelTypes.topTouchStart:
+        EventConstructor = SyntheticTouchEvent;
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> topLevelTypes.topScroll:
+        EventConstructor = SyntheticUIEvent;
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> topLevelTypes.topWheel:
+        EventConstructor = SyntheticWheelEvent;
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> topLevelTypes.topCopy:
+      <span class="keyword">case</span> topLevelTypes.topCut:
+      <span class="keyword">case</span> topLevelTypes.topPaste:
+        EventConstructor = SyntheticClipboardEvent;
+        <span class="keyword">break</span>;
+    }
+    !EventConstructor ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'SimpleEventPlugin: Unhandled event type, `%s`.'</span>, topLevelType) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    <span class="keyword">var</span> event = EventConstructor.getPooled(dispatchConfig, targetInst, nativeEvent, nativeEventTarget);
+    EventPropagators.accumulateTwoPhaseDispatches(event);
+    <span class="keyword">return</span> event;
+  },
+
+  didPutListener: <span class="function"><span class="keyword">function</span> <span class="params">(inst, registrationName, listener)</span> {</span>
+    <span class="comment">// Mobile Safari does not fire properly bubble click events on</span>
+    <span class="comment">// non-interactive elements, which means delegated click listeners do not</span>
+    <span class="comment">// fire. The workaround for this bug involves attaching an empty click</span>
+    <span class="comment">// listener on the target node.</span>
+    <span class="keyword">if</span> (registrationName === ON_CLICK_KEY) {
+      <span class="keyword">var</span> id = inst._rootNodeID;
+      <span class="keyword">var</span> node = ReactDOMComponentTree.getNodeFromInstance(inst);
+      <span class="keyword">if</span> (!onClickListeners[id]) {
+        onClickListeners[id] = EventListener.listen(node, <span class="string">'click'</span>, emptyFunction);
+      }
+    }
+  },
+
+  willDeleteListener: <span class="function"><span class="keyword">function</span> <span class="params">(inst, registrationName)</span> {</span>
+    <span class="keyword">if</span> (registrationName === ON_CLICK_KEY) {
+      <span class="keyword">var</span> id = inst._rootNodeID;
+      onClickListeners[id].remove();
+      <span class="keyword">delete</span> onClickListeners[id];
+    }
+  }
+
+};
+
+module.exports = SimpleEventPlugin;</code></pre>

@@ -1,0 +1,55 @@
+<h1>cloneWithProps.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks static-only
+ * @providesModule cloneWithProps
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactElement = require(<span class="string">'./ReactElement'</span>);
+<span class="keyword">var</span> ReactPropTransferer = require(<span class="string">'./ReactPropTransferer'</span>);
+
+<span class="keyword">var</span> keyOf = require(<span class="string">'fbjs/lib/keyOf'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="keyword">var</span> CHILDREN_PROP = keyOf({ children: <span class="literal">null</span> });
+
+<span class="keyword">var</span> didDeprecatedWarn = <span class="literal">false</span>;
+
+<span class="comment">/**
+ * Sometimes you want to change the props of a child passed to you. Usually
+ * this is to add a CSS class.
+ *
+ * @param {ReactElement} child child element you'd like to clone
+ * @param {object} props props you'd like to modify. className and style will be
+ * merged automatically.
+ * @return {ReactElement} a clone of child with props merged in.
+ * @deprecated
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">cloneWithProps</span><span class="params">(child, props)</span> {</span>
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(didDeprecatedWarn, <span class="string">'cloneWithProps(...) is deprecated. '</span> + <span class="string">'Please use React.cloneElement instead.'</span>) : <span class="literal">undefined</span>;
+    didDeprecatedWarn = <span class="literal">true</span>;
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(!child.ref, <span class="string">'You are calling cloneWithProps() on a child with a ref. This is '</span> + <span class="string">'dangerous because you\'re creating a new child which will not be '</span> + <span class="string">'added as a ref to its parent.'</span>) : <span class="literal">undefined</span>;
+  }
+
+  <span class="keyword">var</span> newProps = ReactPropTransferer.mergeProps(props, child.props);
+
+  <span class="comment">// Use `child.props.children` if it is provided.</span>
+  <span class="keyword">if</span> (!newProps.hasOwnProperty(CHILDREN_PROP) &amp;&amp; child.props.hasOwnProperty(CHILDREN_PROP)) {
+    newProps.children = child.props.children;
+  }
+
+  <span class="comment">// The current API doesn't retain _owner, which is why this</span>
+  <span class="comment">// doesn't use ReactElement.cloneAndReplaceProps.</span>
+  <span class="keyword">return</span> ReactElement.createElement(child.type, newProps);
+}
+
+module.exports = cloneWithProps;</code></pre>

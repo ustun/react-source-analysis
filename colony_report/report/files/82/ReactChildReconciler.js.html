@@ -1,0 +1,123 @@
+<h1>ReactChildReconciler.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2014-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactChildReconciler
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactReconciler = require(<span class="string">'./ReactReconciler'</span>);
+
+<span class="keyword">var</span> instantiateReactComponent = require(<span class="string">'./instantiateReactComponent'</span>);
+<span class="keyword">var</span> shouldUpdateReactComponent = require(<span class="string">'./shouldUpdateReactComponent'</span>);
+<span class="keyword">var</span> traverseAllChildren = require(<span class="string">'./traverseAllChildren'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="function"><span class="keyword">function</span> <span class="title">instantiateChild</span><span class="params">(childInstances, child, name)</span> {</span>
+  <span class="comment">// We found a component instance.</span>
+  <span class="keyword">var</span> keyUnique = childInstances[name] === <span class="literal">undefined</span>;
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(keyUnique, <span class="string">'flattenChildren(...): Encountered two children with the same key, '</span> + <span class="string">'`%s`. Child keys must be unique; when two children share a key, only '</span> + <span class="string">'the first child will be used.'</span>, name) : <span class="literal">undefined</span>;
+  }
+  <span class="keyword">if</span> (child != <span class="literal">null</span> &amp;&amp; keyUnique) {
+    childInstances[name] = instantiateReactComponent(child, <span class="literal">null</span>);
+  }
+}
+
+<span class="comment">/**
+ * ReactChildReconciler provides helpers for initializing or updating a set of
+ * children. Its output is suitable for passing it onto ReactMultiChild which
+ * does diffed reordering and insertion.
+ */</span>
+<span class="keyword">var</span> ReactChildReconciler = {
+  <span class="comment">/**
+   * Generates a "mount image" for each of the supplied children. In the case
+   * of `ReactDOMComponent`, a mount image is a string of markup.
+   *
+   * @param {?object} nestedChildNodes Nested child maps.
+   * @return {?object} A set of child instances.
+   * @internal
+   */</span>
+  instantiateChildren: <span class="function"><span class="keyword">function</span> <span class="params">(nestedChildNodes, transaction, context)</span> {</span>
+    <span class="keyword">if</span> (nestedChildNodes == <span class="literal">null</span>) {
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    }
+    <span class="keyword">var</span> childInstances = {};
+    traverseAllChildren(nestedChildNodes, instantiateChild, childInstances);
+    <span class="keyword">return</span> childInstances;
+  },
+
+  <span class="comment">/**
+   * Updates the rendered children and returns a new set of children.
+   *
+   * @param {?object} prevChildren Previously initialized set of children.
+   * @param {?object} nextChildren Flat child element maps.
+   * @param {ReactReconcileTransaction} transaction
+   * @param {object} context
+   * @return {?object} A new set of child instances.
+   * @internal
+   */</span>
+  updateChildren: <span class="function"><span class="keyword">function</span> <span class="params">(prevChildren, nextChildren, transaction, context)</span> {</span>
+    <span class="comment">// We currently don't have a way to track moves here but if we use iterators</span>
+    <span class="comment">// instead of for..in we can zip the iterators and check if an item has</span>
+    <span class="comment">// moved.</span>
+    <span class="comment">// TODO: If nothing has changed, return the prevChildren object so that we</span>
+    <span class="comment">// can quickly bailout if nothing has changed.</span>
+    <span class="keyword">if</span> (!nextChildren &amp;&amp; !prevChildren) {
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    }
+    <span class="keyword">var</span> name;
+    <span class="keyword">for</span> (name <span class="keyword">in</span> nextChildren) {
+      <span class="keyword">if</span> (!nextChildren.hasOwnProperty(name)) {
+        <span class="keyword">continue</span>;
+      }
+      <span class="keyword">var</span> prevChild = prevChildren &amp;&amp; prevChildren[name];
+      <span class="keyword">var</span> prevElement = prevChild &amp;&amp; prevChild._currentElement;
+      <span class="keyword">var</span> nextElement = nextChildren[name];
+      <span class="keyword">if</span> (prevChild != <span class="literal">null</span> &amp;&amp; shouldUpdateReactComponent(prevElement, nextElement)) {
+        ReactReconciler.receiveComponent(prevChild, nextElement, transaction, context);
+        nextChildren[name] = prevChild;
+      } <span class="keyword">else</span> {
+        <span class="keyword">if</span> (prevChild) {
+          ReactReconciler.unmountComponent(prevChild, name);
+        }
+        <span class="comment">// The child must be instantiated before it's mounted.</span>
+        <span class="keyword">var</span> nextChildInstance = instantiateReactComponent(nextElement, <span class="literal">null</span>);
+        nextChildren[name] = nextChildInstance;
+      }
+    }
+    <span class="comment">// Unmount children that are no longer present.</span>
+    <span class="keyword">for</span> (name <span class="keyword">in</span> prevChildren) {
+      <span class="keyword">if</span> (prevChildren.hasOwnProperty(name) &amp;&amp; !(nextChildren &amp;&amp; nextChildren.hasOwnProperty(name))) {
+        ReactReconciler.unmountComponent(prevChildren[name]);
+      }
+    }
+    <span class="keyword">return</span> nextChildren;
+  },
+
+  <span class="comment">/**
+   * Unmounts all rendered children. This should be used to clean up children
+   * when this component is unmounted.
+   *
+   * @param {?object} renderedChildren Previously initialized set of children.
+   * @internal
+   */</span>
+  unmountChildren: <span class="function"><span class="keyword">function</span> <span class="params">(renderedChildren)</span> {</span>
+    <span class="keyword">for</span> (<span class="keyword">var</span> name <span class="keyword">in</span> renderedChildren) {
+      <span class="keyword">if</span> (renderedChildren.hasOwnProperty(name)) {
+        <span class="keyword">var</span> renderedChild = renderedChildren[name];
+        ReactReconciler.unmountComponent(renderedChild);
+      }
+    }
+  }
+
+};
+
+module.exports = ReactChildReconciler;</code></pre>

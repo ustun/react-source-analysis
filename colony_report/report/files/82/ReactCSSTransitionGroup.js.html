@@ -1,0 +1,84 @@
+<h1>ReactCSSTransitionGroup.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks
+ * @providesModule ReactCSSTransitionGroup
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> React = require(<span class="string">'./React'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+
+<span class="keyword">var</span> ReactTransitionGroup = require(<span class="string">'./ReactTransitionGroup'</span>);
+<span class="keyword">var</span> ReactCSSTransitionGroupChild = require(<span class="string">'./ReactCSSTransitionGroupChild'</span>);
+
+<span class="function"><span class="keyword">function</span> <span class="title">createTransitionTimeoutPropValidator</span><span class="params">(transitionType)</span> {</span>
+  <span class="keyword">var</span> timeoutPropName = <span class="string">'transition'</span> + transitionType + <span class="string">'Timeout'</span>;
+  <span class="keyword">var</span> enabledPropName = <span class="string">'transition'</span> + transitionType;
+
+  <span class="keyword">return</span> <span class="function"><span class="keyword">function</span> <span class="params">(props)</span> {</span>
+    <span class="comment">// If the transition is enabled</span>
+    <span class="keyword">if</span> (props[enabledPropName]) {
+      <span class="comment">// If no timeout duration is provided</span>
+      <span class="keyword">if</span> (props[timeoutPropName] == <span class="literal">null</span>) {
+        <span class="keyword">return</span> <span class="keyword">new</span> Error(timeoutPropName + <span class="string">' wasn\'t supplied to ReactCSSTransitionGroup: '</span> + <span class="string">'this can cause unreliable animations and won\'t be supported in '</span> + <span class="string">'a future version of React. See '</span> + <span class="string">'https://fb.me/react-animation-transition-group-timeout for more '</span> + <span class="string">'information.'</span>);
+
+        <span class="comment">// If the duration isn't a number</span>
+      } <span class="keyword">else</span> <span class="keyword">if</span> (<span class="keyword">typeof</span> props[timeoutPropName] !== <span class="string">'number'</span>) {
+          <span class="keyword">return</span> <span class="keyword">new</span> Error(timeoutPropName + <span class="string">' must be a number (in milliseconds)'</span>);
+        }
+    }
+  };
+}
+
+<span class="keyword">var</span> ReactCSSTransitionGroup = React.createClass({
+  displayName: <span class="string">'ReactCSSTransitionGroup'</span>,
+
+  propTypes: {
+    transitionName: ReactCSSTransitionGroupChild.propTypes.name,
+
+    transitionAppear: React.PropTypes.bool,
+    transitionEnter: React.PropTypes.bool,
+    transitionLeave: React.PropTypes.bool,
+    transitionAppearTimeout: createTransitionTimeoutPropValidator(<span class="string">'Appear'</span>),
+    transitionEnterTimeout: createTransitionTimeoutPropValidator(<span class="string">'Enter'</span>),
+    transitionLeaveTimeout: createTransitionTimeoutPropValidator(<span class="string">'Leave'</span>)
+  },
+
+  getDefaultProps: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> {
+      transitionAppear: <span class="literal">false</span>,
+      transitionEnter: <span class="literal">true</span>,
+      transitionLeave: <span class="literal">true</span>
+    };
+  },
+
+  _wrapChild: <span class="function"><span class="keyword">function</span> <span class="params">(child)</span> {</span>
+    <span class="comment">// We need to provide this childFactory so that</span>
+    <span class="comment">// ReactCSSTransitionGroupChild can receive updates to name, enter, and</span>
+    <span class="comment">// leave while it is leaving.</span>
+    <span class="keyword">return</span> React.createElement(ReactCSSTransitionGroupChild, {
+      name: <span class="keyword">this</span>.props.transitionName,
+      appear: <span class="keyword">this</span>.props.transitionAppear,
+      enter: <span class="keyword">this</span>.props.transitionEnter,
+      leave: <span class="keyword">this</span>.props.transitionLeave,
+      appearTimeout: <span class="keyword">this</span>.props.transitionAppearTimeout,
+      enterTimeout: <span class="keyword">this</span>.props.transitionEnterTimeout,
+      leaveTimeout: <span class="keyword">this</span>.props.transitionLeaveTimeout
+    }, child);
+  },
+
+  render: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> React.createElement(ReactTransitionGroup, assign({}, <span class="keyword">this</span>.props, { childFactory: <span class="keyword">this</span>._wrapChild }));
+  }
+});
+
+module.exports = ReactCSSTransitionGroup;</code></pre>

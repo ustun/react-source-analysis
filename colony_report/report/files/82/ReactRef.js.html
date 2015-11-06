@@ -1,0 +1,81 @@
+<h1>ReactRef.js</h1>
+<pre><code class="lang-js"><span class="comment">// OK</span>
+<span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactRef
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactOwner = require(<span class="string">'./ReactOwner'</span>);
+
+<span class="keyword">var</span> ReactRef = {};
+
+<span class="function"><span class="keyword">function</span> <span class="title">attachRef</span><span class="params">(ref, component, owner)</span> {</span>
+  <span class="keyword">if</span> (<span class="keyword">typeof</span> ref === <span class="string">'function'</span>) {
+    ref(component.getPublicInstance());
+  } <span class="keyword">else</span> {
+    <span class="comment">// Legacy ref</span>
+    ReactOwner.addComponentAsRefTo(component, ref, owner);
+  }
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">detachRef</span><span class="params">(ref, component, owner)</span> {</span>
+  <span class="keyword">if</span> (<span class="keyword">typeof</span> ref === <span class="string">'function'</span>) {
+    ref(<span class="literal">null</span>);
+  } <span class="keyword">else</span> {
+    <span class="comment">// Legacy ref</span>
+    ReactOwner.removeComponentAsRefFrom(component, ref, owner);
+  }
+}
+
+ReactRef.attachRefs = <span class="function"><span class="keyword">function</span> <span class="params">(instance, element)</span> {</span>
+  <span class="keyword">if</span> (element === <span class="literal">null</span> || element === <span class="literal">false</span>) {
+    <span class="keyword">return</span>;
+  }
+  <span class="keyword">var</span> ref = element.ref;
+  <span class="keyword">if</span> (ref != <span class="literal">null</span>) {
+    attachRef(ref, instance, element._owner);
+  }
+};
+
+ReactRef.shouldUpdateRefs = <span class="function"><span class="keyword">function</span> <span class="params">(prevElement, nextElement)</span> {</span>
+  <span class="comment">// If either the owner or a `ref` has changed, make sure the newest owner</span>
+  <span class="comment">// has stored a reference to `this`, and the previous owner (if different)</span>
+  <span class="comment">// has forgotten the reference to `this`. We use the element instead</span>
+  <span class="comment">// of the public this.props because the post processing cannot determine</span>
+  <span class="comment">// a ref. The ref conceptually lives on the element.</span>
+
+  <span class="comment">// TODO: Should this even be possible? The owner cannot change because</span>
+  <span class="comment">// it's forbidden by shouldUpdateReactComponent. The ref can change</span>
+  <span class="comment">// if you swap the keys of but not the refs. Reconsider where this check</span>
+  <span class="comment">// is made. It probably belongs where the key checking and</span>
+  <span class="comment">// instantiateReactComponent is done.</span>
+
+  <span class="keyword">var</span> prevEmpty = prevElement === <span class="literal">null</span> || prevElement === <span class="literal">false</span>;
+  <span class="keyword">var</span> nextEmpty = nextElement === <span class="literal">null</span> || nextElement === <span class="literal">false</span>;
+
+  <span class="keyword">return</span>(
+    <span class="comment">// This has a few false positives w/r/t empty components.</span>
+    prevEmpty || nextEmpty || nextElement._owner !== prevElement._owner || nextElement.ref !== prevElement.ref
+  );
+};
+
+ReactRef.detachRefs = <span class="function"><span class="keyword">function</span> <span class="params">(instance, element)</span> {</span>
+  <span class="keyword">if</span> (element === <span class="literal">null</span> || element === <span class="literal">false</span>) {
+    <span class="keyword">return</span>;
+  }
+  <span class="keyword">var</span> ref = element.ref;
+  <span class="keyword">if</span> (ref != <span class="literal">null</span>) {
+    detachRef(ref, instance, element._owner);
+  }
+};
+
+module.exports = ReactRef;
+</code></pre>

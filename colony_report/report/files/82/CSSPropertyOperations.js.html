@@ -1,0 +1,177 @@
+<h1>CSSPropertyOperations.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule CSSPropertyOperations
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> CSSProperty = require(<span class="string">'./CSSProperty'</span>);
+<span class="keyword">var</span> ExecutionEnvironment = require(<span class="string">'fbjs/lib/ExecutionEnvironment'</span>);
+<span class="keyword">var</span> ReactPerf = require(<span class="string">'./ReactPerf'</span>);
+
+<span class="keyword">var</span> camelizeStyleName = require(<span class="string">'fbjs/lib/camelizeStyleName'</span>);
+<span class="keyword">var</span> dangerousStyleValue = require(<span class="string">'./dangerousStyleValue'</span>);
+<span class="keyword">var</span> hyphenateStyleName = require(<span class="string">'fbjs/lib/hyphenateStyleName'</span>);
+<span class="keyword">var</span> memoizeStringOnly = require(<span class="string">'fbjs/lib/memoizeStringOnly'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="keyword">var</span> processStyleName = memoizeStringOnly(<span class="function"><span class="keyword">function</span> <span class="params">(styleName)</span> {</span>
+  <span class="keyword">return</span> hyphenateStyleName(styleName);
+});
+
+<span class="keyword">var</span> hasShorthandPropertyBug = <span class="literal">false</span>;
+<span class="keyword">var</span> styleFloatAccessor = <span class="string">'cssFloat'</span>;
+<span class="keyword">if</span> (ExecutionEnvironment.canUseDOM) {
+  <span class="keyword">var</span> tempStyle = document.createElement(<span class="string">'div'</span>).style;
+  <span class="keyword">try</span> {
+    <span class="comment">// IE8 throws "Invalid argument." if resetting shorthand style properties.</span>
+    tempStyle.font = <span class="string">''</span>;
+  } <span class="keyword">catch</span> (e) {
+    hasShorthandPropertyBug = <span class="literal">true</span>;
+  }
+  <span class="comment">// IE8 only supports accessing cssFloat (standard) as styleFloat</span>
+  <span class="keyword">if</span> (document.documentElement.style.cssFloat === <span class="literal">undefined</span>) {
+    styleFloatAccessor = <span class="string">'styleFloat'</span>;
+  }
+}
+
+<span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+  <span class="comment">// 'msTransform' is correct, but the other prefixes should be capitalized</span>
+  <span class="keyword">var</span> badVendoredStyleNamePattern = <span class="regexp">/^(?:webkit|moz|o)[A-Z]/</span>;
+
+  <span class="comment">// style values shouldn't contain a semicolon</span>
+  <span class="keyword">var</span> badStyleValueWithSemicolonPattern = <span class="regexp">/;\s*$/</span>;
+
+  <span class="keyword">var</span> warnedStyleNames = {};
+  <span class="keyword">var</span> warnedStyleValues = {};
+
+  <span class="keyword">var</span> warnHyphenatedStyleName = <span class="function"><span class="keyword">function</span> <span class="params">(name)</span> {</span>
+    <span class="keyword">if</span> (warnedStyleNames.hasOwnProperty(name) &amp;&amp; warnedStyleNames[name]) {
+      <span class="keyword">return</span>;
+    }
+
+    warnedStyleNames[name] = <span class="literal">true</span>;
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'Unsupported style property %s. Did you mean %s?'</span>, name, camelizeStyleName(name)) : <span class="literal">undefined</span>;
+  };
+
+  <span class="keyword">var</span> warnBadVendoredStyleName = <span class="function"><span class="keyword">function</span> <span class="params">(name)</span> {</span>
+    <span class="keyword">if</span> (warnedStyleNames.hasOwnProperty(name) &amp;&amp; warnedStyleNames[name]) {
+      <span class="keyword">return</span>;
+    }
+
+    warnedStyleNames[name] = <span class="literal">true</span>;
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'Unsupported vendor-prefixed style property %s. Did you mean %s?'</span>, name, name.charAt(<span class="number">0</span>).toUpperCase() + name.slice(<span class="number">1</span>)) : <span class="literal">undefined</span>;
+  };
+
+  <span class="keyword">var</span> warnStyleValueWithSemicolon = <span class="function"><span class="keyword">function</span> <span class="params">(name, value)</span> {</span>
+    <span class="keyword">if</span> (warnedStyleValues.hasOwnProperty(value) &amp;&amp; warnedStyleValues[value]) {
+      <span class="keyword">return</span>;
+    }
+
+    warnedStyleValues[value] = <span class="literal">true</span>;
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'Style property values shouldn\'t contain a semicolon. '</span> + <span class="string">'Try "%s: %s" instead.'</span>, name, value.replace(badStyleValueWithSemicolonPattern, <span class="string">''</span>)) : <span class="literal">undefined</span>;
+  };
+
+  <span class="comment">/**
+   * @param {string} name
+   * @param {*} value
+   */</span>
+  <span class="keyword">var</span> warnValidStyle = <span class="function"><span class="keyword">function</span> <span class="params">(name, value)</span> {</span>
+    <span class="keyword">if</span> (name.indexOf(<span class="string">'-'</span>) > -<span class="number">1</span>) {
+      warnHyphenatedStyleName(name);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (badVendoredStyleNamePattern.test(name)) {
+      warnBadVendoredStyleName(name);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (badStyleValueWithSemicolonPattern.test(value)) {
+      warnStyleValueWithSemicolon(name, value);
+    }
+  };
+}
+
+<span class="comment">/**
+ * Operations for dealing with CSS properties.
+ */</span>
+<span class="keyword">var</span> CSSPropertyOperations = {
+
+  <span class="comment">/**
+   * Serializes a mapping of style properties for use as inline styles:
+   *
+   *   > createMarkupForStyles({width: '200px', height: 0})
+   *   "width:200px;height:0;"
+   *
+   * Undefined values are ignored so that declarative programming is easier.
+   * The result should be HTML-escaped before insertion into the DOM.
+   *
+   * @param {object} styles
+   * @param {ReactDOMComponent} component
+   * @return {?string}
+   */</span>
+  createMarkupForStyles: <span class="function"><span class="keyword">function</span> <span class="params">(styles, component)</span> {</span>
+    <span class="keyword">var</span> serialized = <span class="string">''</span>;
+    <span class="keyword">for</span> (<span class="keyword">var</span> styleName <span class="keyword">in</span> styles) {
+      <span class="keyword">if</span> (!styles.hasOwnProperty(styleName)) {
+        <span class="keyword">continue</span>;
+      }
+      <span class="keyword">var</span> styleValue = styles[styleName];
+      <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+        warnValidStyle(styleName, styleValue);
+      }
+      <span class="keyword">if</span> (styleValue != <span class="literal">null</span>) {
+        serialized += processStyleName(styleName) + <span class="string">':'</span>;
+        serialized += dangerousStyleValue(styleName, styleValue, component) + <span class="string">';'</span>;
+      }
+    }
+    <span class="keyword">return</span> serialized || <span class="literal">null</span>;
+  },
+
+  <span class="comment">/**
+   * Sets the value for multiple styles on a node.  If a value is specified as
+   * '' (empty string), the corresponding style property will be unset.
+   *
+   * @param {DOMElement} node
+   * @param {object} styles
+   */</span>
+  setValueForStyles: <span class="function"><span class="keyword">function</span> <span class="params">(node, styles, component)</span> {</span>
+    <span class="keyword">var</span> style = node.style;
+    <span class="keyword">for</span> (<span class="keyword">var</span> styleName <span class="keyword">in</span> styles) {
+      <span class="keyword">if</span> (!styles.hasOwnProperty(styleName)) {
+        <span class="keyword">continue</span>;
+      }
+      <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+        warnValidStyle(styleName, styles[styleName]);
+      }
+      <span class="keyword">var</span> styleValue = dangerousStyleValue(styleName, styles[styleName], component);
+      <span class="keyword">if</span> (styleName === <span class="string">'float'</span>) {
+        styleName = styleFloatAccessor;
+      }
+      <span class="keyword">if</span> (styleValue) {
+        style[styleName] = styleValue;
+      } <span class="keyword">else</span> {
+        <span class="keyword">var</span> expansion = hasShorthandPropertyBug &amp;&amp; CSSProperty.shorthandPropertyExpansions[styleName];
+        <span class="keyword">if</span> (expansion) {
+          <span class="comment">// Shorthand property that IE8 won't like unsetting, so unset each</span>
+          <span class="comment">// component to placate it</span>
+          <span class="keyword">for</span> (<span class="keyword">var</span> individualStyleName <span class="keyword">in</span> expansion) {
+            style[individualStyleName] = <span class="string">''</span>;
+          }
+        } <span class="keyword">else</span> {
+          style[styleName] = <span class="string">''</span>;
+        }
+      }
+    }
+  }
+
+};
+
+ReactPerf.measureMethods(CSSPropertyOperations, <span class="string">'CSSPropertyOperations'</span>, {
+  setValueForStyles: <span class="string">'setValueForStyles'</span>
+});
+
+module.exports = CSSPropertyOperations;</code></pre>

@@ -1,0 +1,61 @@
+<h1>isEventSupported.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule isEventSupported
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ExecutionEnvironment = require(<span class="string">'fbjs/lib/ExecutionEnvironment'</span>);
+
+<span class="keyword">var</span> useHasFeature;
+<span class="keyword">if</span> (ExecutionEnvironment.canUseDOM) {
+  useHasFeature = document.implementation &amp;&amp; document.implementation.hasFeature &amp;&amp;
+  <span class="comment">// always returns true in newer browsers as per the standard.</span>
+  <span class="comment">// @see http://dom.spec.whatwg.org/#dom-domimplementation-hasfeature</span>
+  document.implementation.hasFeature(<span class="string">''</span>, <span class="string">''</span>) !== <span class="literal">true</span>;
+}
+
+<span class="comment">/**
+ * Checks if an event is supported in the current execution environment.
+ *
+ * NOTE: This will not work correctly for non-generic events such as `change`,
+ * `reset`, `load`, `error`, and `select`.
+ *
+ * Borrows from Modernizr.
+ *
+ * @param {string} eventNameSuffix Event name, e.g. "click".
+ * @param {?boolean} capture Check if the capture phase is supported.
+ * @return {boolean} True if the event is supported.
+ * @internal
+ * @license Modernizr 3.0.0pre (Custom Build) | MIT
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">isEventSupported</span><span class="params">(eventNameSuffix, capture)</span> {</span>
+  <span class="keyword">if</span> (!ExecutionEnvironment.canUseDOM || capture &amp;&amp; !(<span class="string">'addEventListener'</span> <span class="keyword">in</span> document)) {
+    <span class="keyword">return</span> <span class="literal">false</span>;
+  }
+
+  <span class="keyword">var</span> eventName = <span class="string">'on'</span> + eventNameSuffix;
+  <span class="keyword">var</span> isSupported = (eventName <span class="keyword">in</span> document);
+
+  <span class="keyword">if</span> (!isSupported) {
+    <span class="keyword">var</span> element = document.createElement(<span class="string">'div'</span>);
+    element.setAttribute(eventName, <span class="string">'return;'</span>);
+    isSupported = <span class="keyword">typeof</span> element[eventName] === <span class="string">'function'</span>;
+  }
+
+  <span class="keyword">if</span> (!isSupported &amp;&amp; useHasFeature &amp;&amp; eventNameSuffix === <span class="string">'wheel'</span>) {
+    <span class="comment">// This is the only way to test support for the `wheel` event in IE9+.</span>
+    isSupported = document.implementation.hasFeature(<span class="string">'Events.wheel'</span>, <span class="string">'3.0'</span>);
+  }
+
+  <span class="keyword">return</span> isSupported;
+}
+
+module.exports = isEventSupported;</code></pre>

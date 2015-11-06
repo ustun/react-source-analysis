@@ -1,0 +1,96 @@
+<h1>FallbackCompositionState.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule FallbackCompositionState
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> PooledClass = require(<span class="string">'./PooledClass'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> getTextContentAccessor = require(<span class="string">'./getTextContentAccessor'</span>);
+
+<span class="comment">/**
+ * This helper class stores information about text content of a target node,
+ * allowing comparison of content before and after a given event.
+ *
+ * Identify the node where selection currently begins, then observe
+ * both its text content and its current position in the DOM. Since the
+ * browser may natively replace the target node during composition, we can
+ * use its position to find its replacement.
+ *
+ * @param {DOMEventTarget} root
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">FallbackCompositionState</span><span class="params">(root)</span> {</span>
+  <span class="keyword">this</span>._root = root;
+  <span class="keyword">this</span>._startText = <span class="keyword">this</span>.getText();
+  <span class="keyword">this</span>._fallbackText = <span class="literal">null</span>;
+}
+
+assign(FallbackCompositionState.prototype, {
+  destructor: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">this</span>._root = <span class="literal">null</span>;
+    <span class="keyword">this</span>._startText = <span class="literal">null</span>;
+    <span class="keyword">this</span>._fallbackText = <span class="literal">null</span>;
+  },
+
+  <span class="comment">/**
+   * Get current text of input.
+   *
+   * @return {string}
+   */</span>
+  getText: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">if</span> (<span class="string">'value'</span> <span class="keyword">in</span> <span class="keyword">this</span>._root) {
+      <span class="keyword">return</span> <span class="keyword">this</span>._root.value;
+    }
+    <span class="keyword">return</span> <span class="keyword">this</span>._root[getTextContentAccessor()];
+  },
+
+  <span class="comment">/**
+   * Determine the differing substring between the initially stored
+   * text content and the current content.
+   *
+   * @return {string}
+   */</span>
+  getData: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">if</span> (<span class="keyword">this</span>._fallbackText) {
+      <span class="keyword">return</span> <span class="keyword">this</span>._fallbackText;
+    }
+
+    <span class="keyword">var</span> start;
+    <span class="keyword">var</span> startValue = <span class="keyword">this</span>._startText;
+    <span class="keyword">var</span> startLength = startValue.length;
+    <span class="keyword">var</span> end;
+    <span class="keyword">var</span> endValue = <span class="keyword">this</span>.getText();
+    <span class="keyword">var</span> endLength = endValue.length;
+
+    <span class="keyword">for</span> (start = <span class="number">0</span>; start &lt; startLength; start++) {
+      <span class="keyword">if</span> (startValue[start] !== endValue[start]) {
+        <span class="keyword">break</span>;
+      }
+    }
+
+    <span class="keyword">var</span> minEnd = startLength - start;
+    <span class="keyword">for</span> (end = <span class="number">1</span>; end &lt;= minEnd; end++) {
+      <span class="keyword">if</span> (startValue[startLength - end] !== endValue[endLength - end]) {
+        <span class="keyword">break</span>;
+      }
+    }
+
+    <span class="keyword">var</span> sliceTail = end > <span class="number">1</span> ? <span class="number">1</span> - end : <span class="literal">undefined</span>;
+    <span class="keyword">this</span>._fallbackText = endValue.slice(start, sliceTail);
+    <span class="keyword">return</span> <span class="keyword">this</span>._fallbackText;
+  }
+});
+
+PooledClass.addPoolingTo(FallbackCompositionState);
+
+module.exports = FallbackCompositionState;</code></pre>

@@ -1,0 +1,138 @@
+<h1>EventPropagators.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule EventPropagators
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> EventConstants = require(<span class="string">'./EventConstants'</span>);
+<span class="keyword">var</span> EventPluginHub = require(<span class="string">'./EventPluginHub'</span>);
+<span class="keyword">var</span> EventPluginUtils = require(<span class="string">'./EventPluginUtils'</span>);
+
+<span class="keyword">var</span> accumulateInto = require(<span class="string">'./accumulateInto'</span>);
+<span class="keyword">var</span> forEachAccumulated = require(<span class="string">'./forEachAccumulated'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="keyword">var</span> PropagationPhases = EventConstants.PropagationPhases;
+<span class="keyword">var</span> getListener = EventPluginHub.getListener;
+
+<span class="comment">/**
+ * Some event types have a notion of different registration names for different
+ * "phases" of propagation. This finds listeners by a given phase.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">listenerAtPhase</span><span class="params">(inst, event, propagationPhase)</span> {</span>
+  <span class="keyword">var</span> registrationName = event.dispatchConfig.phasedRegistrationNames[propagationPhase];
+  <span class="keyword">return</span> getListener(inst, registrationName);
+}
+
+<span class="comment">/**
+ * Tags a `SyntheticEvent` with dispatched listeners. Creating this function
+ * here, allows us to not have to bind or create functions for each event.
+ * Mutating the event's members allows us to not have to create a wrapping
+ * "dispatch" object that pairs the event with the listener.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">accumulateDirectionalDispatches</span><span class="params">(inst, upwards, event)</span> {</span>
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(inst, <span class="string">'Dispatching inst must not be null'</span>) : <span class="literal">undefined</span>;
+  }
+  <span class="keyword">var</span> phase = upwards ? PropagationPhases.bubbled : PropagationPhases.captured;
+  <span class="keyword">var</span> listener = listenerAtPhase(inst, event, phase);
+  <span class="keyword">if</span> (listener) {
+    event._dispatchListeners = accumulateInto(event._dispatchListeners, listener);
+    event._dispatchInstances = accumulateInto(event._dispatchInstances, inst);
+  }
+}
+
+<span class="comment">/**
+ * Collect dispatches (must be entirely collected before dispatching - see unit
+ * tests). Lazily allocate the array to conserve memory.  We must loop through
+ * each event and perform the traversal for each one. We cannot perform a
+ * single traversal for the entire collection of events because each event may
+ * have a different target.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">accumulateTwoPhaseDispatchesSingle</span><span class="params">(event)</span> {</span>
+  <span class="keyword">if</span> (event &amp;&amp; event.dispatchConfig.phasedRegistrationNames) {
+    EventPluginUtils.traverseTwoPhase(event._targetInst, accumulateDirectionalDispatches, event);
+  }
+}
+
+<span class="comment">/**
+ * Same as `accumulateTwoPhaseDispatchesSingle`, but skips over the targetID.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">accumulateTwoPhaseDispatchesSingleSkipTarget</span><span class="params">(event)</span> {</span>
+  <span class="keyword">if</span> (event &amp;&amp; event.dispatchConfig.phasedRegistrationNames) {
+    <span class="keyword">var</span> targetInst = event._targetInst;
+    <span class="keyword">var</span> parentInst = targetInst ? EventPluginUtils.getParentInstance(targetInst) : <span class="literal">null</span>;
+    EventPluginUtils.traverseTwoPhase(parentInst, accumulateDirectionalDispatches, event);
+  }
+}
+
+<span class="comment">/**
+ * Accumulates without regard to direction, does not look for phased
+ * registration names. Same as `accumulateDirectDispatchesSingle` but without
+ * requiring that the `dispatchMarker` be the same as the dispatched ID.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">accumulateDispatches</span><span class="params">(inst, ignoredDirection, event)</span> {</span>
+  <span class="keyword">if</span> (event &amp;&amp; event.dispatchConfig.registrationName) {
+    <span class="keyword">var</span> registrationName = event.dispatchConfig.registrationName;
+    <span class="keyword">var</span> listener = getListener(inst, registrationName);
+    <span class="keyword">if</span> (listener) {
+      event._dispatchListeners = accumulateInto(event._dispatchListeners, listener);
+      event._dispatchInstances = accumulateInto(event._dispatchInstances, inst);
+    }
+  }
+}
+
+<span class="comment">/**
+ * Accumulates dispatches on an `SyntheticEvent`, but only for the
+ * `dispatchMarker`.
+ * @param {SyntheticEvent} event
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">accumulateDirectDispatchesSingle</span><span class="params">(event)</span> {</span>
+  <span class="keyword">if</span> (event &amp;&amp; event.dispatchConfig.registrationName) {
+    accumulateDispatches(event._targetInst, <span class="literal">null</span>, event);
+  }
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">accumulateTwoPhaseDispatches</span><span class="params">(events)</span> {</span>
+  forEachAccumulated(events, accumulateTwoPhaseDispatchesSingle);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">accumulateTwoPhaseDispatchesSkipTarget</span><span class="params">(events)</span> {</span>
+  forEachAccumulated(events, accumulateTwoPhaseDispatchesSingleSkipTarget);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">accumulateEnterLeaveDispatches</span><span class="params">(leave, enter, from, to)</span> {</span>
+  EventPluginUtils.traverseEnterLeave(from, to, accumulateDispatches, leave, enter);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">accumulateDirectDispatches</span><span class="params">(events)</span> {</span>
+  forEachAccumulated(events, accumulateDirectDispatchesSingle);
+}
+
+<span class="comment">/**
+ * A small set of propagation patterns, each of which will accept a small amount
+ * of information, and generate a set of "dispatch ready event objects" - which
+ * are sets of events that have already been annotated with a set of dispatched
+ * listener functions/ids. The API is designed this way to discourage these
+ * propagation strategies from actually executing the dispatches, since we
+ * always want to collect the entire set of dispatches before executing event a
+ * single one.
+ *
+ * @constructor EventPropagators
+ */</span>
+<span class="keyword">var</span> EventPropagators = {
+  accumulateTwoPhaseDispatches: accumulateTwoPhaseDispatches,
+  accumulateTwoPhaseDispatchesSkipTarget: accumulateTwoPhaseDispatchesSkipTarget,
+  accumulateDirectDispatches: accumulateDirectDispatches,
+  accumulateEnterLeaveDispatches: accumulateEnterLeaveDispatches
+};
+
+module.exports = EventPropagators;</code></pre>

@@ -1,0 +1,61 @@
+<h1>SyntheticUIEvent.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule SyntheticUIEvent
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> SyntheticEvent = require(<span class="string">'./SyntheticEvent'</span>);
+
+<span class="keyword">var</span> getEventTarget = require(<span class="string">'./getEventTarget'</span>);
+
+<span class="comment">/**
+ * @interface UIEvent
+ * @see http://www.w3.org/TR/DOM-Level-3-Events/
+ */</span>
+<span class="keyword">var</span> UIEventInterface = {
+  view: <span class="function"><span class="keyword">function</span> <span class="params">(event)</span> {</span>
+    <span class="keyword">if</span> (event.view) {
+      <span class="keyword">return</span> event.view;
+    }
+
+    <span class="keyword">var</span> target = getEventTarget(event);
+    <span class="keyword">if</span> (target != <span class="literal">null</span> &amp;&amp; target.window === target) {
+      <span class="comment">// target is a window object</span>
+      <span class="keyword">return</span> target;
+    }
+
+    <span class="keyword">var</span> doc = target.ownerDocument;
+    <span class="comment">// TODO: Figure out why `ownerDocument` is sometimes undefined in IE8.</span>
+    <span class="keyword">if</span> (doc) {
+      <span class="keyword">return</span> doc.defaultView || doc.parentWindow;
+    } <span class="keyword">else</span> {
+      <span class="keyword">return</span> window;
+    }
+  },
+  detail: <span class="function"><span class="keyword">function</span> <span class="params">(event)</span> {</span>
+    <span class="keyword">return</span> event.detail || <span class="number">0</span>;
+  }
+};
+
+<span class="comment">/**
+ * @param {object} dispatchConfig Configuration used to dispatch this event.
+ * @param {string} dispatchMarker Marker identifying the event target.
+ * @param {object} nativeEvent Native browser event.
+ * @extends {SyntheticEvent}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">SyntheticUIEvent</span><span class="params">(dispatchConfig, dispatchMarker, nativeEvent, nativeEventTarget)</span> {</span>
+  SyntheticEvent.call(<span class="keyword">this</span>, dispatchConfig, dispatchMarker, nativeEvent, nativeEventTarget);
+}
+
+SyntheticEvent.augmentClass(SyntheticUIEvent, UIEventInterface);
+
+module.exports = SyntheticUIEvent;</code></pre>

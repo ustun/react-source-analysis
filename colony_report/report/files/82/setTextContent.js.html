@@ -1,0 +1,41 @@
+<h1>setTextContent.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule setTextContent
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ExecutionEnvironment = require(<span class="string">'fbjs/lib/ExecutionEnvironment'</span>);
+<span class="keyword">var</span> escapeTextContentForBrowser = require(<span class="string">'./escapeTextContentForBrowser'</span>);
+<span class="keyword">var</span> setInnerHTML = require(<span class="string">'./setInnerHTML'</span>);
+
+<span class="comment">/**
+ * Set the textContent property of a node, ensuring that whitespace is preserved
+ * even in IE8. innerText is a poor substitute for textContent and, among many
+ * issues, inserts &lt;br> instead of the literal newline chars. innerHTML behaves
+ * as it should.
+ *
+ * @param {DOMElement} node
+ * @param {string} text
+ * @internal
+ */</span>
+<span class="keyword">var</span> setTextContent = <span class="function"><span class="keyword">function</span> <span class="params">(node, text)</span> {</span>
+  node.textContent = text;
+};
+
+<span class="keyword">if</span> (ExecutionEnvironment.canUseDOM) {
+  <span class="keyword">if</span> (!(<span class="string">'textContent'</span> <span class="keyword">in</span> document.documentElement)) {
+    setTextContent = <span class="function"><span class="keyword">function</span> <span class="params">(node, text)</span> {</span>
+      setInnerHTML(node, escapeTextContentForBrowser(text));
+    };
+  }
+}
+
+module.exports = setTextContent;</code></pre>

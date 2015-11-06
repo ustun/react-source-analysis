@@ -1,0 +1,61 @@
+<h1>ReactWithAddons.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactWithAddons
+ */</span>
+
+<span class="comment">/**
+ * This module exists purely in the open source project, and is meant as a way
+ * to create a separate standalone build of React. This build has "addons", or
+ * functionality we've built and think might be useful but doesn't have a good
+ * place to live inside React core.
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> LinkedStateMixin = require(<span class="string">'./LinkedStateMixin'</span>);
+<span class="keyword">var</span> React = require(<span class="string">'./React'</span>);
+<span class="keyword">var</span> ReactComponentWithPureRenderMixin = require(<span class="string">'./ReactComponentWithPureRenderMixin'</span>);
+<span class="keyword">var</span> ReactCSSTransitionGroup = require(<span class="string">'./ReactCSSTransitionGroup'</span>);
+<span class="keyword">var</span> ReactFragment = require(<span class="string">'./ReactFragment'</span>);
+<span class="keyword">var</span> ReactTransitionGroup = require(<span class="string">'./ReactTransitionGroup'</span>);
+<span class="keyword">var</span> ReactUpdates = require(<span class="string">'./ReactUpdates'</span>);
+
+<span class="keyword">var</span> cloneWithProps = require(<span class="string">'./cloneWithProps'</span>);
+<span class="keyword">var</span> shallowCompare = require(<span class="string">'./shallowCompare'</span>);
+<span class="keyword">var</span> update = require(<span class="string">'./update'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="keyword">var</span> warnedAboutBatchedUpdates = <span class="literal">false</span>;
+
+React.addons = {
+  CSSTransitionGroup: ReactCSSTransitionGroup,
+  LinkedStateMixin: LinkedStateMixin,
+  PureRenderMixin: ReactComponentWithPureRenderMixin,
+  TransitionGroup: ReactTransitionGroup,
+
+  batchedUpdates: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(warnedAboutBatchedUpdates, <span class="string">'React.addons.batchedUpdates is deprecated. Use '</span> + <span class="string">'ReactDOM.unstable_batchedUpdates instead.'</span>) : <span class="literal">undefined</span>;
+      warnedAboutBatchedUpdates = <span class="literal">true</span>;
+    }
+    <span class="keyword">return</span> ReactUpdates.batchedUpdates.apply(<span class="keyword">this</span>, arguments);
+  },
+  cloneWithProps: cloneWithProps,
+  createFragment: ReactFragment.create,
+  shallowCompare: shallowCompare,
+  update: update
+};
+
+<span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+  React.addons.Perf = require(<span class="string">'./ReactDefaultPerf'</span>);
+  React.addons.TestUtils = require(<span class="string">'./ReactTestUtils'</span>);
+}
+
+module.exports = React;</code></pre>

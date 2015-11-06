@@ -1,0 +1,258 @@
+<h1>ReactUpdateQueue.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactUpdateQueue
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactCurrentOwner = require(<span class="string">'./ReactCurrentOwner'</span>);
+<span class="keyword">var</span> ReactElement = require(<span class="string">'./ReactElement'</span>);
+<span class="keyword">var</span> ReactInstanceMap = require(<span class="string">'./ReactInstanceMap'</span>);
+<span class="keyword">var</span> ReactUpdates = require(<span class="string">'./ReactUpdates'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="function"><span class="keyword">function</span> <span class="title">enqueueUpdate</span><span class="params">(internalInstance)</span> {</span>
+  ReactUpdates.enqueueUpdate(internalInstance);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">getInternalInstanceReadyForUpdate</span><span class="params">(publicInstance, callerName)</span> {</span>
+  <span class="keyword">var</span> internalInstance = ReactInstanceMap.get(publicInstance);
+  <span class="keyword">if</span> (!internalInstance) {
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      <span class="comment">// Only warn when we have a callerName. Otherwise we should be silent.</span>
+      <span class="comment">// We're probably calling from enqueueCallback. We don't want to warn</span>
+      <span class="comment">// there because we already warned for the corresponding lifecycle method.</span>
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(!callerName, <span class="string">'%s(...): Can only update a mounted or mounting component. '</span> + <span class="string">'This usually means you called %s() on an unmounted component. '</span> + <span class="string">'This is a no-op. Please check the code for the %s component.'</span>, callerName, callerName, publicInstance.constructor.displayName) : <span class="literal">undefined</span>;
+    }
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(ReactCurrentOwner.current == <span class="literal">null</span>, <span class="string">'%s(...): Cannot update during an existing state transition '</span> + <span class="string">'(such as within `render`). Render methods should be a pure function '</span> + <span class="string">'of props and state.'</span>, callerName) : <span class="literal">undefined</span>;
+  }
+
+  <span class="keyword">return</span> internalInstance;
+}
+
+<span class="comment">/**
+ * ReactUpdateQueue allows for state updates to be scheduled into a later
+ * reconciliation step.
+ */</span>
+<span class="keyword">var</span> ReactUpdateQueue = {
+
+  <span class="comment">/**
+   * Checks whether or not this composite component is mounted.
+   * @param {ReactClass} publicInstance The instance we want to test.
+   * @return {boolean} True if mounted, false otherwise.
+   * @protected
+   * @final
+   */</span>
+  isMounted: <span class="function"><span class="keyword">function</span> <span class="params">(publicInstance)</span> {</span>
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      <span class="keyword">var</span> owner = ReactCurrentOwner.current;
+      <span class="keyword">if</span> (owner !== <span class="literal">null</span>) {
+        process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(owner._warnedAboutRefsInRender, <span class="string">'%s is accessing isMounted inside its render() function. '</span> + <span class="string">'render() should be a pure function of props and state. It should '</span> + <span class="string">'never access something that requires stale data from the previous '</span> + <span class="string">'render, such as refs. Move this logic to componentDidMount and '</span> + <span class="string">'componentDidUpdate instead.'</span>, owner.getName() || <span class="string">'A component'</span>) : <span class="literal">undefined</span>;
+        owner._warnedAboutRefsInRender = <span class="literal">true</span>;
+      }
+    }
+    <span class="keyword">var</span> internalInstance = ReactInstanceMap.get(publicInstance);
+    <span class="keyword">if</span> (internalInstance) {
+      <span class="comment">// During componentWillMount and render this will still be null but after</span>
+      <span class="comment">// that will always render to something. At least for now. So we can use</span>
+      <span class="comment">// this hack.</span>
+      <span class="keyword">return</span> !!internalInstance._renderedComponent;
+    } <span class="keyword">else</span> {
+      <span class="keyword">return</span> <span class="literal">false</span>;
+    }
+  },
+
+  <span class="comment">/**
+   * Enqueue a callback that will be executed after all the pending updates
+   * have processed.
+   *
+   * @param {ReactClass} publicInstance The instance to use as `this` context.
+   * @param {?function} callback Called after state is updated.
+   * @internal
+   */</span>
+  enqueueCallback: <span class="function"><span class="keyword">function</span> <span class="params">(publicInstance, callback)</span> {</span>
+    !(<span class="keyword">typeof</span> callback === <span class="string">'function'</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'enqueueCallback(...): You called `setProps`, `replaceProps`, '</span> + <span class="string">'`setState`, `replaceState`, or `forceUpdate` with a callback of type '</span> + <span class="string">'%s. A function is expected'</span>, <span class="keyword">typeof</span> callback === <span class="string">'object'</span> &amp;&amp; Object.keys(callback).length &amp;&amp; Object.keys(callback).length &lt; <span class="number">20</span> ? <span class="keyword">typeof</span> callback + <span class="string">' (keys: '</span> + Object.keys(callback) + <span class="string">')'</span> : <span class="keyword">typeof</span> callback) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    <span class="keyword">var</span> internalInstance = getInternalInstanceReadyForUpdate(publicInstance);
+
+    <span class="comment">// Previously we would throw an error if we didn't have an internal</span>
+    <span class="comment">// instance. Since we want to make it a no-op instead, we mirror the same</span>
+    <span class="comment">// behavior we have in other enqueue* methods.</span>
+    <span class="comment">// We also need to ignore callbacks in componentWillMount. See</span>
+    <span class="comment">// enqueueUpdates.</span>
+    <span class="keyword">if</span> (!internalInstance) {
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    }
+
+    <span class="keyword">if</span> (internalInstance._pendingCallbacks) {
+      internalInstance._pendingCallbacks.push(callback);
+    } <span class="keyword">else</span> {
+      internalInstance._pendingCallbacks = [callback];
+    }
+    <span class="comment">// TODO: The callback here is ignored when setState is called from</span>
+    <span class="comment">// componentWillMount. Either fix it or disallow doing so completely in</span>
+    <span class="comment">// favor of getInitialState. Alternatively, we can disallow</span>
+    <span class="comment">// componentWillMount during server-side rendering.</span>
+    enqueueUpdate(internalInstance);
+  },
+
+  enqueueCallbackInternal: <span class="function"><span class="keyword">function</span> <span class="params">(internalInstance, callback)</span> {</span>
+    !(<span class="keyword">typeof</span> callback === <span class="string">'function'</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'enqueueCallback(...): You called `setProps`, `replaceProps`, '</span> + <span class="string">'`setState`, `replaceState`, or `forceUpdate` with a callback of type '</span> + <span class="string">'%s. A function is expected'</span>, <span class="keyword">typeof</span> callback === <span class="string">'object'</span> &amp;&amp; Object.keys(callback).length &amp;&amp; Object.keys(callback).length &lt; <span class="number">20</span> ? <span class="keyword">typeof</span> callback + <span class="string">' (keys: '</span> + Object.keys(callback) + <span class="string">')'</span> : <span class="keyword">typeof</span> callback) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    <span class="keyword">if</span> (internalInstance._pendingCallbacks) {
+      internalInstance._pendingCallbacks.push(callback);
+    } <span class="keyword">else</span> {
+      internalInstance._pendingCallbacks = [callback];
+    }
+    enqueueUpdate(internalInstance);
+  },
+
+  <span class="comment">/**
+   * Forces an update. This should only be invoked when it is known with
+   * certainty that we are **not** in a DOM transaction.
+   *
+   * You may want to call this when you know that some deeper aspect of the
+   * component's state has changed but `setState` was not called.
+   *
+   * This will not invoke `shouldComponentUpdate`, but it will invoke
+   * `componentWillUpdate` and `componentDidUpdate`.
+   *
+   * @param {ReactClass} publicInstance The instance that should rerender.
+   * @internal
+   */</span>
+  enqueueForceUpdate: <span class="function"><span class="keyword">function</span> <span class="params">(publicInstance)</span> {</span>
+    <span class="keyword">var</span> internalInstance = getInternalInstanceReadyForUpdate(publicInstance, <span class="string">'forceUpdate'</span>);
+
+    <span class="keyword">if</span> (!internalInstance) {
+      <span class="keyword">return</span>;
+    }
+
+    internalInstance._pendingForceUpdate = <span class="literal">true</span>;
+
+    enqueueUpdate(internalInstance);
+  },
+
+  <span class="comment">/**
+   * Replaces all of the state. Always use this or `setState` to mutate state.
+   * You should treat `this.state` as immutable.
+   *
+   * There is no guarantee that `this.state` will be immediately updated, so
+   * accessing `this.state` after calling this method may return the old value.
+   *
+   * @param {ReactClass} publicInstance The instance that should rerender.
+   * @param {object} completeState Next state.
+   * @internal
+   */</span>
+  enqueueReplaceState: <span class="function"><span class="keyword">function</span> <span class="params">(publicInstance, completeState)</span> {</span>
+    <span class="keyword">var</span> internalInstance = getInternalInstanceReadyForUpdate(publicInstance, <span class="string">'replaceState'</span>);
+
+    <span class="keyword">if</span> (!internalInstance) {
+      <span class="keyword">return</span>;
+    }
+
+    internalInstance._pendingStateQueue = [completeState];
+    internalInstance._pendingReplaceState = <span class="literal">true</span>;
+
+    enqueueUpdate(internalInstance);
+  },
+
+  <span class="comment">/**
+   * Sets a subset of the state. This only exists because _pendingState is
+   * internal. This provides a merging strategy that is not available to deep
+   * properties which is confusing. TODO: Expose pendingState or don't use it
+   * during the merge.
+   *
+   * @param {ReactClass} publicInstance The instance that should rerender.
+   * @param {object} partialState Next partial state to be merged with state.
+   * @internal
+   */</span>
+  enqueueSetState: <span class="function"><span class="keyword">function</span> <span class="params">(publicInstance, partialState)</span> {</span>
+    <span class="keyword">var</span> internalInstance = getInternalInstanceReadyForUpdate(publicInstance, <span class="string">'setState'</span>);
+
+    <span class="keyword">if</span> (!internalInstance) {
+      <span class="keyword">return</span>;
+    }
+
+    <span class="keyword">var</span> queue = internalInstance._pendingStateQueue || (internalInstance._pendingStateQueue = []);
+    queue.push(partialState);
+
+    enqueueUpdate(internalInstance);
+  },
+
+  <span class="comment">/**
+   * Sets a subset of the props.
+   *
+   * @param {ReactClass} publicInstance The instance that should rerender.
+   * @param {object} partialProps Subset of the next props.
+   * @internal
+   */</span>
+  enqueueSetProps: <span class="function"><span class="keyword">function</span> <span class="params">(publicInstance, partialProps)</span> {</span>
+    <span class="keyword">var</span> internalInstance = getInternalInstanceReadyForUpdate(publicInstance, <span class="string">'setProps'</span>);
+    <span class="keyword">if</span> (!internalInstance) {
+      <span class="keyword">return</span>;
+    }
+    ReactUpdateQueue.enqueueSetPropsInternal(internalInstance, partialProps);
+  },
+
+  enqueueSetPropsInternal: <span class="function"><span class="keyword">function</span> <span class="params">(internalInstance, partialProps)</span> {</span>
+    <span class="keyword">var</span> topLevelWrapper = internalInstance._topLevelWrapper;
+    !topLevelWrapper ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'setProps(...): You called `setProps` on a '</span> + <span class="string">'component with a parent. This is an anti-pattern since props will '</span> + <span class="string">'get reactively updated when rendered. Instead, change the owner\'s '</span> + <span class="string">'`render` method to pass the correct value as props to the component '</span> + <span class="string">'where it is created.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+    <span class="comment">// Merge with the pending element if it exists, otherwise with existing</span>
+    <span class="comment">// element props.</span>
+    <span class="keyword">var</span> wrapElement = topLevelWrapper._pendingElement || topLevelWrapper._currentElement;
+    <span class="keyword">var</span> element = wrapElement.props;
+    <span class="keyword">var</span> props = assign({}, element.props, partialProps);
+    topLevelWrapper._pendingElement = ReactElement.cloneAndReplaceProps(wrapElement, ReactElement.cloneAndReplaceProps(element, props));
+
+    enqueueUpdate(topLevelWrapper);
+  },
+
+  <span class="comment">/**
+   * Replaces all of the props.
+   *
+   * @param {ReactClass} publicInstance The instance that should rerender.
+   * @param {object} props New props.
+   * @internal
+   */</span>
+  enqueueReplaceProps: <span class="function"><span class="keyword">function</span> <span class="params">(publicInstance, props)</span> {</span>
+    <span class="keyword">var</span> internalInstance = getInternalInstanceReadyForUpdate(publicInstance, <span class="string">'replaceProps'</span>);
+    <span class="keyword">if</span> (!internalInstance) {
+      <span class="keyword">return</span>;
+    }
+    ReactUpdateQueue.enqueueReplacePropsInternal(internalInstance, props);
+  },
+
+  enqueueReplacePropsInternal: <span class="function"><span class="keyword">function</span> <span class="params">(internalInstance, props)</span> {</span>
+    <span class="keyword">var</span> topLevelWrapper = internalInstance._topLevelWrapper;
+    !topLevelWrapper ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'replaceProps(...): You called `replaceProps` on a '</span> + <span class="string">'component with a parent. This is an anti-pattern since props will '</span> + <span class="string">'get reactively updated when rendered. Instead, change the owner\'s '</span> + <span class="string">'`render` method to pass the correct value as props to the component '</span> + <span class="string">'where it is created.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+    <span class="comment">// Merge with the pending element if it exists, otherwise with existing</span>
+    <span class="comment">// element props.</span>
+    <span class="keyword">var</span> wrapElement = topLevelWrapper._pendingElement || topLevelWrapper._currentElement;
+    <span class="keyword">var</span> element = wrapElement.props;
+    topLevelWrapper._pendingElement = ReactElement.cloneAndReplaceProps(wrapElement, ReactElement.cloneAndReplaceProps(element, props));
+
+    enqueueUpdate(topLevelWrapper);
+  },
+
+  enqueueElementInternal: <span class="function"><span class="keyword">function</span> <span class="params">(internalInstance, newElement)</span> {</span>
+    internalInstance._pendingElement = newElement;
+    enqueueUpdate(internalInstance);
+  }
+
+};
+
+module.exports = ReactUpdateQueue;</code></pre>

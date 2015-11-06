@@ -1,0 +1,25 @@
+<h1>canDefineProperty.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule canDefineProperty
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> canDefineProperty = <span class="literal">false</span>;
+<span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+  <span class="keyword">try</span> {
+    Object.defineProperty({}, <span class="string">'x'</span>, { get: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>} });
+    canDefineProperty = <span class="literal">true</span>;
+  } <span class="keyword">catch</span> (x) {
+    <span class="comment">// IE will fail on defineProperty</span>
+  }
+}
+
+module.exports = canDefineProperty;</code></pre>

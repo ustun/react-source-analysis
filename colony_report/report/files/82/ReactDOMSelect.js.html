@@ -1,0 +1,204 @@
+<h1>ReactDOMSelect.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDOMSelect
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> LinkedValueUtils = require(<span class="string">'./LinkedValueUtils'</span>);
+<span class="keyword">var</span> ReactDOMComponentTree = require(<span class="string">'./ReactDOMComponentTree'</span>);
+<span class="keyword">var</span> ReactUpdates = require(<span class="string">'./ReactUpdates'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="keyword">var</span> didWarnValueLink = <span class="literal">false</span>;
+<span class="keyword">var</span> didWarnValueNull = <span class="literal">false</span>;
+
+<span class="function"><span class="keyword">function</span> <span class="title">updateOptionsIfPendingUpdateAndMounted</span><span class="params">()</span> {</span>
+  <span class="keyword">if</span> (<span class="keyword">this</span>._rootNodeID &amp;&amp; <span class="keyword">this</span>._wrapperState.pendingUpdate) {
+    <span class="keyword">this</span>._wrapperState.pendingUpdate = <span class="literal">false</span>;
+
+    <span class="keyword">var</span> props = <span class="keyword">this</span>._currentElement.props;
+    <span class="keyword">var</span> value = LinkedValueUtils.getValue(props);
+
+    <span class="keyword">if</span> (value != <span class="literal">null</span>) {
+      updateOptions(<span class="keyword">this</span>, props, value);
+    }
+  }
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">getDeclarationErrorAddendum</span><span class="params">(owner)</span> {</span>
+  <span class="keyword">if</span> (owner) {
+    <span class="keyword">var</span> name = owner.getName();
+    <span class="keyword">if</span> (name) {
+      <span class="keyword">return</span> <span class="string">' Check the render method of `'</span> + name + <span class="string">'`.'</span>;
+    }
+  }
+  <span class="keyword">return</span> <span class="string">''</span>;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">warnIfValueIsNull</span><span class="params">(props)</span> {</span>
+  <span class="keyword">if</span> (props != <span class="literal">null</span> &amp;&amp; props.value === <span class="literal">null</span> &amp;&amp; !didWarnValueNull) {
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'`value` prop on `select` should not be null. '</span> + <span class="string">'Consider using the empty string to clear the component or `undefined` '</span> + <span class="string">'for uncontrolled components.'</span>) : <span class="literal">undefined</span>;
+
+    didWarnValueNull = <span class="literal">true</span>;
+  }
+}
+
+<span class="keyword">var</span> valuePropNames = [<span class="string">'value'</span>, <span class="string">'defaultValue'</span>];
+
+<span class="comment">/**
+ * Validation function for `value` and `defaultValue`.
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">checkSelectPropTypes</span><span class="params">(inst, props)</span> {</span>
+  <span class="keyword">var</span> owner = inst._currentElement._owner;
+  LinkedValueUtils.checkPropTypes(<span class="string">'select'</span>, props, owner);
+
+  <span class="keyword">if</span> (props.valueLink !== <span class="literal">undefined</span> &amp;&amp; !didWarnValueLink) {
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'`valueLink` prop on `select` is deprecated; set `value` and `onChange` instead.'</span>) : <span class="literal">undefined</span>;
+    didWarnValueLink = <span class="literal">true</span>;
+  }
+
+  <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; valuePropNames.length; i++) {
+    <span class="keyword">var</span> propName = valuePropNames[i];
+    <span class="keyword">if</span> (props[propName] == <span class="literal">null</span>) {
+      <span class="keyword">continue</span>;
+    }
+    <span class="keyword">if</span> (props.multiple) {
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(Array.isArray(props[propName]), <span class="string">'The `%s` prop supplied to &lt;select> must be an array if '</span> + <span class="string">'`multiple` is true.%s'</span>, propName, getDeclarationErrorAddendum(owner)) : <span class="literal">undefined</span>;
+    } <span class="keyword">else</span> {
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(!Array.isArray(props[propName]), <span class="string">'The `%s` prop supplied to &lt;select> must be a scalar '</span> + <span class="string">'value if `multiple` is false.%s'</span>, propName, getDeclarationErrorAddendum(owner)) : <span class="literal">undefined</span>;
+    }
+  }
+}
+
+<span class="comment">/**
+ * @param {ReactDOMComponent} inst
+ * @param {boolean} multiple
+ * @param {*} propValue A stringable (with `multiple`, a list of stringables).
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">updateOptions</span><span class="params">(inst, multiple, propValue)</span> {</span>
+  <span class="keyword">var</span> selectedValue, i;
+  <span class="keyword">var</span> options = ReactDOMComponentTree.getNodeFromInstance(inst).options;
+
+  <span class="keyword">if</span> (multiple) {
+    selectedValue = {};
+    <span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; propValue.length; i++) {
+      selectedValue[<span class="string">''</span> + propValue[i]] = <span class="literal">true</span>;
+    }
+    <span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; options.length; i++) {
+      <span class="keyword">var</span> selected = selectedValue.hasOwnProperty(options[i].value);
+      <span class="keyword">if</span> (options[i].selected !== selected) {
+        options[i].selected = selected;
+      }
+    }
+  } <span class="keyword">else</span> {
+    <span class="comment">// Do not set `select.value` as exact behavior isn't consistent across all</span>
+    <span class="comment">// browsers for all cases.</span>
+    selectedValue = <span class="string">''</span> + propValue;
+    <span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; options.length; i++) {
+      <span class="keyword">if</span> (options[i].value === selectedValue) {
+        options[i].selected = <span class="literal">true</span>;
+        <span class="keyword">return</span>;
+      }
+    }
+    <span class="keyword">if</span> (options.length) {
+      options[<span class="number">0</span>].selected = <span class="literal">true</span>;
+    }
+  }
+}
+
+<span class="comment">/**
+ * Implements a &lt;select> native component that allows optionally setting the
+ * props `value` and `defaultValue`. If `multiple` is false, the prop must be a
+ * stringable. If `multiple` is true, the prop must be an array of stringables.
+ *
+ * If `value` is not supplied (or null/undefined), user actions that change the
+ * selected option will trigger updates to the rendered options.
+ *
+ * If it is supplied (and not null/undefined), the rendered options will not
+ * update in response to user actions. Instead, the `value` prop must change in
+ * order for the rendered options to update.
+ *
+ * If `defaultValue` is provided, any options with the supplied values will be
+ * selected.
+ */</span>
+<span class="keyword">var</span> ReactDOMSelect = {
+  getNativeProps: <span class="function"><span class="keyword">function</span> <span class="params">(inst, props)</span> {</span>
+    <span class="keyword">return</span> assign({}, props, {
+      onChange: inst._wrapperState.onChange,
+      value: <span class="literal">undefined</span>
+    });
+  },
+
+  mountWrapper: <span class="function"><span class="keyword">function</span> <span class="params">(inst, props)</span> {</span>
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      checkSelectPropTypes(inst, props);
+      warnIfValueIsNull(props);
+    }
+
+    <span class="keyword">var</span> value = LinkedValueUtils.getValue(props);
+    inst._wrapperState = {
+      pendingUpdate: <span class="literal">false</span>,
+      initialValue: value != <span class="literal">null</span> ? value : props.defaultValue,
+      listeners: <span class="literal">null</span>,
+      onChange: _handleChange.bind(inst),
+      wasMultiple: Boolean(props.multiple)
+    };
+  },
+
+  getSelectValueContext: <span class="function"><span class="keyword">function</span> <span class="params">(inst)</span> {</span>
+    <span class="comment">// ReactDOMOption looks at this initial value so the initial generated</span>
+    <span class="comment">// markup has correct `selected` attributes</span>
+    <span class="keyword">return</span> inst._wrapperState.initialValue;
+  },
+
+  postUpdateWrapper: <span class="function"><span class="keyword">function</span> <span class="params">(inst)</span> {</span>
+    <span class="keyword">var</span> props = inst._currentElement.props;
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      warnIfValueIsNull(props);
+    }
+
+    <span class="comment">// After the initial mount, we control selected-ness manually so don't pass</span>
+    <span class="comment">// this value down</span>
+    inst._wrapperState.initialValue = <span class="literal">undefined</span>;
+
+    <span class="keyword">var</span> wasMultiple = inst._wrapperState.wasMultiple;
+    inst._wrapperState.wasMultiple = Boolean(props.multiple);
+
+    <span class="keyword">var</span> value = LinkedValueUtils.getValue(props);
+    <span class="keyword">if</span> (value != <span class="literal">null</span>) {
+      inst._wrapperState.pendingUpdate = <span class="literal">false</span>;
+      updateOptions(inst, Boolean(props.multiple), value);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (wasMultiple !== Boolean(props.multiple)) {
+      <span class="comment">// For simplicity, reapply `defaultValue` if `multiple` is toggled.</span>
+      <span class="keyword">if</span> (props.defaultValue != <span class="literal">null</span>) {
+        updateOptions(inst, Boolean(props.multiple), props.defaultValue);
+      } <span class="keyword">else</span> {
+        <span class="comment">// Revert the select back to its default unselected state.</span>
+        updateOptions(inst, Boolean(props.multiple), props.multiple ? [] : <span class="string">''</span>);
+      }
+    }
+  }
+};
+
+<span class="function"><span class="keyword">function</span> <span class="title">_handleChange</span><span class="params">(event)</span> {</span>
+  <span class="keyword">var</span> props = <span class="keyword">this</span>._currentElement.props;
+  <span class="keyword">var</span> returnValue = LinkedValueUtils.executeOnChange(props, event);
+
+  <span class="keyword">this</span>._wrapperState.pendingUpdate = <span class="literal">true</span>;
+  ReactUpdates.asap(updateOptionsIfPendingUpdateAndMounted, <span class="keyword">this</span>);
+  <span class="keyword">return</span> returnValue;
+}
+
+module.exports = ReactDOMSelect;</code></pre>

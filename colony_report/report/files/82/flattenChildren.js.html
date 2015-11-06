@@ -1,0 +1,49 @@
+<h1>flattenChildren.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule flattenChildren
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> traverseAllChildren = require(<span class="string">'./traverseAllChildren'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="comment">/**
+ * @param {function} traverseContext Context passed through traversal.
+ * @param {?ReactComponent} child React child component.
+ * @param {!string} name String name of key path to child.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">flattenSingleChildIntoContext</span><span class="params">(traverseContext, child, name)</span> {</span>
+  <span class="comment">// We found a component instance.</span>
+  <span class="keyword">var</span> result = traverseContext;
+  <span class="keyword">var</span> keyUnique = result[name] === <span class="literal">undefined</span>;
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(keyUnique, <span class="string">'flattenChildren(...): Encountered two children with the same key, '</span> + <span class="string">'`%s`. Child keys must be unique; when two children share a key, only '</span> + <span class="string">'the first child will be used.'</span>, name) : <span class="literal">undefined</span>;
+  }
+  <span class="keyword">if</span> (keyUnique &amp;&amp; child != <span class="literal">null</span>) {
+    result[name] = child;
+  }
+}
+
+<span class="comment">/**
+ * Flattens children that are typically specified as `props.children`. Any null
+ * children will not be included in the resulting object.
+ * @return {!object} flattened children keyed by name.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">flattenChildren</span><span class="params">(children)</span> {</span>
+  <span class="keyword">if</span> (children == <span class="literal">null</span>) {
+    <span class="keyword">return</span> children;
+  }
+  <span class="keyword">var</span> result = {};
+  traverseAllChildren(children, flattenSingleChildIntoContext, result);
+  <span class="keyword">return</span> result;
+}
+
+module.exports = flattenChildren;</code></pre>

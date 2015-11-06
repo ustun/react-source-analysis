@@ -1,0 +1,454 @@
+<h1>OrderedMap.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule OrderedMap
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+
+<span class="keyword">var</span> PREFIX = <span class="string">'key:'</span>;
+
+<span class="comment">/**
+ * Utility to extract a backing object from an initialization `Array`, allowing
+ * the caller to assist in resolving the unique ID for each entry via the
+ * `keyExtractor` callback. The `keyExtractor` must extract non-empty strings or
+ * numbers.
+ * @param {Array&lt;Object!>} arr Array of items.
+ * @param {function} keyExtractor Extracts a unique key from each item.
+ * @return {Object} Map from unique key to originating value that the key was
+ * extracted from.
+ * @throws Exception if the initialization array has duplicate extracted keys.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">extractObjectFromArray</span><span class="params">(arr, keyExtractor)</span> {</span>
+  <span class="keyword">var</span> normalizedObj = {};
+  <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; arr.length; i++) {
+    <span class="keyword">var</span> item = arr[i];
+    <span class="keyword">var</span> key = keyExtractor(item);
+    assertValidPublicKey(key);
+    <span class="keyword">var</span> normalizedKey = PREFIX + key;
+    !!(normalizedKey <span class="keyword">in</span> normalizedObj) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'OrderedMap: IDs returned by the key extraction function must be unique.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    normalizedObj[normalizedKey] = item;
+  }
+  <span class="keyword">return</span> normalizedObj;
+}
+
+<span class="comment">/**
+ * Utility class for mappings with ordering. This class is to be used in an
+ * immutable manner. A `OrderedMap` is very much like the native JavaScript
+ * object, where keys map to values via the `get()` function. Also, like the
+ * native JavaScript object, there is an ordering associated with the mapping.
+ * This class is helpful because it eliminates many of the pitfalls that come
+ * with the native JavaScript ordered mappings. Specifically, there are
+ * inconsistencies with numeric keys in some JavaScript implementations
+ * (enumeration ordering). This class protects against those pitfalls and
+ * provides functional utilities for dealing with these `OrderedMap`s.
+ *
+ * - TODO:
+ * - orderedMergeExclusive: Merges mutually exclusive `OrderedMap`s.
+ * - mapReverse().
+ *
+ * @class {OrderedMap}
+ * @constructor {OrderedMap}
+ * @param {Object} normalizedObj Object that is known to be a defensive copy of
+ * caller supplied data. We require a defensive copy to guard against callers
+ * mutating.  It is also assumed that the keys of `normalizedObj` have been
+ * normalized and do not contain any numeric-appearing strings.
+ * @param {number} computedLength The precomputed length of `_normalizedObj`
+ * keys.
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">OrderedMapImpl</span><span class="params">(normalizedObj, computedLength)</span> {</span>
+  <span class="keyword">this</span>._normalizedObj = normalizedObj;
+  <span class="keyword">this</span>._computedPositions = <span class="literal">null</span>;
+  <span class="keyword">this</span>.length = computedLength;
+}
+
+<span class="comment">/**
+ * Validates a "public" key - that is, one that the public facing API supplies.
+ * The key is then normalized for internal storage. In order to be considered
+ * valid, all keys must be non-empty, defined, non-null strings or numbers.
+ *
+ * @param {string?} key Validates that the key is suitable for use in a
+ * `OrderedMap`.
+ * @throws Error if key is not appropriate for use in `OrderedMap`.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">assertValidPublicKey</span><span class="params">(key)</span> {</span>
+  !(key !== <span class="string">''</span> &amp;&amp; (<span class="keyword">typeof</span> key === <span class="string">'string'</span> || <span class="keyword">typeof</span> key === <span class="string">'number'</span>)) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'OrderedMap: Key must be non-empty, non-null string or number.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+}
+
+<span class="comment">/**
+ * Validates that arguments to range operations are within the correct limits.
+ *
+ * @param {number} start Start of range.
+ * @param {number} length Length of range.
+ * @param {number} actualLen Actual length of range that should not be
+ * exceeded.
+ * @throws Error if range arguments are out of bounds.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">assertValidRangeIndices</span><span class="params">(start, length, actualLen)</span> {</span>
+  !(<span class="keyword">typeof</span> start === <span class="string">'number'</span> &amp;&amp; <span class="keyword">typeof</span> length === <span class="string">'number'</span> &amp;&amp; length >= <span class="number">0</span> &amp;&amp; start >= <span class="number">0</span> &amp;&amp; start + length &lt;= actualLen) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'OrderedMap: `mapRange` and `forEachRange` expect non-negative start and '</span> + <span class="string">'length arguments within the bounds of the instance.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+}
+
+<span class="comment">/**
+ * Merges two "normalized" objects (objects who's key have been normalized) into
+ * a `OrderedMap`.
+ *
+ * @param {Object} a Object of key value pairs.
+ * @param {Object} b Object of key value pairs.
+ * @return {OrderedMap} new `OrderedMap` that results in merging `a` and `b`.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">_fromNormalizedObjects</span><span class="params">(a, b)</span> {</span>
+  <span class="comment">// Second optional, both must be plain JavaScript objects.</span>
+  !(a &amp;&amp; a.constructor === Object &amp;&amp; (!b || b.constructor === Object)) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'OrderedMap: Corrupted instance of OrderedMap detected.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+  <span class="keyword">var</span> newSet = {};
+  <span class="keyword">var</span> length = <span class="number">0</span>;
+  <span class="keyword">var</span> key;
+  <span class="keyword">for</span> (key <span class="keyword">in</span> a) {
+    <span class="keyword">if</span> (a.hasOwnProperty(key)) {
+      newSet[key] = a[key];
+      length++;
+    }
+  }
+
+  <span class="keyword">for</span> (key <span class="keyword">in</span> b) {
+    <span class="keyword">if</span> (b.hasOwnProperty(key)) {
+      <span class="comment">// Increment length if not already added via first object (a)</span>
+      <span class="keyword">if</span> (!(key <span class="keyword">in</span> newSet)) {
+        length++;
+      }
+      newSet[key] = b[key];
+    }
+  }
+  <span class="keyword">return</span> <span class="keyword">new</span> OrderedMapImpl(newSet, length);
+}
+
+<span class="comment">/**
+ * Methods for `OrderedMap` instances.
+ *
+ * @lends OrderedMap.prototype
+ * TODO: Make this data structure lazy, unify with LazyArray.
+ * TODO: Unify this with ImmutableObject - it is to be used immutably.
+ * TODO: If so, consider providing `fromObject` API.
+ * TODO: Create faster implementation of merging/mapping from original Array,
+ * without having to first create an object - simply for the sake of merging.
+ */</span>
+<span class="keyword">var</span> OrderedMapMethods = {
+
+  <span class="comment">/**
+   * Returns whether or not a given key is present in the map.
+   *
+   * @param {string} key Valid string key to lookup membership for.
+   * @return {boolean} Whether or not `key` is a member of the map.
+   * @throws Error if provided known invalid key.
+   */</span>
+  has: <span class="function"><span class="keyword">function</span> <span class="params">(key)</span> {</span>
+    assertValidPublicKey(key);
+    <span class="keyword">var</span> normalizedKey = PREFIX + key;
+    <span class="keyword">return</span> normalizedKey <span class="keyword">in</span> <span class="keyword">this</span>._normalizedObj;
+  },
+
+  <span class="comment">/**
+   * Returns the object for a given key, or `undefined` if not present. To
+   * distinguish an undefined entry vs not being in the set, use `has()`.
+   *
+   * @param {string} key String key to lookup the value for.
+   * @return {Object?} Object at key `key`, or undefined if not in map.
+   * @throws Error if provided known invalid key.
+   */</span>
+  get: <span class="function"><span class="keyword">function</span> <span class="params">(key)</span> {</span>
+    assertValidPublicKey(key);
+    <span class="keyword">var</span> normalizedKey = PREFIX + key;
+    <span class="keyword">return</span> <span class="keyword">this</span>.has(key) ? <span class="keyword">this</span>._normalizedObj[normalizedKey] : <span class="literal">undefined</span>;
+  },
+
+  <span class="comment">/**
+   * Merges, appending new keys to the end of the ordering. Keys in `orderedMap`
+   * that are redundant with `this`, maintain the same ordering index that they
+   * had in `this`.  This is how standard JavaScript object merging would work.
+   * If you wish to prepend a `OrderedMap` to the beginning of another
+   * `OrderedMap` then simply reverse the order of operation. This is the analog
+   * to `merge(x, y)`.
+   *
+   * @param {OrderedMap} orderedMap OrderedMap to merge onto the end.
+   * @return {OrderedMap} New OrderedMap that represents the result of the
+   * merge.
+   */</span>
+  merge: <span class="function"><span class="keyword">function</span> <span class="params">(orderedMap)</span> {</span>
+    !(orderedMap <span class="keyword">instanceof</span> OrderedMapImpl) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'OrderedMap.merge(...): Expected an OrderedMap instance.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    <span class="keyword">return</span> _fromNormalizedObjects(<span class="keyword">this</span>._normalizedObj, orderedMap._normalizedObj);
+  },
+
+  <span class="comment">/**
+   * Functional map API. Returns a new `OrderedMap`.
+   *
+   * @param {Function} cb Callback to invoke for each item.
+   * @param {Object?=} context Context to invoke callback from.
+   * @return {OrderedMap} OrderedMap that results from mapping.
+   */</span>
+  map: <span class="function"><span class="keyword">function</span> <span class="params">(cb, context)</span> {</span>
+    <span class="keyword">return</span> <span class="keyword">this</span>.mapRange(cb, <span class="number">0</span>, <span class="keyword">this</span>.length, context);
+  },
+
+  <span class="comment">/**
+   * The callback `cb` is invoked with the arguments (item, key,
+   * indexInOriginal).
+   *
+   * @param {Function} cb Determines result for each item.
+   * @param {number} start Start index of map range.
+   * @param {end} length End index of map range.
+   * @param {*!?} context Context of callback invocation.
+   * @return {OrderedMap} OrderedMap resulting from mapping the range.
+   */</span>
+  mapRange: <span class="function"><span class="keyword">function</span> <span class="params">(cb, start, length, context)</span> {</span>
+    <span class="keyword">var</span> thisSet = <span class="keyword">this</span>._normalizedObj;
+    <span class="keyword">var</span> newSet = {};
+    <span class="keyword">var</span> i = <span class="number">0</span>;
+    assertValidRangeIndices(start, length, <span class="keyword">this</span>.length);
+    <span class="keyword">var</span> end = start + length - <span class="number">1</span>;
+    <span class="keyword">for</span> (<span class="keyword">var</span> key <span class="keyword">in</span> thisSet) {
+      <span class="keyword">if</span> (thisSet.hasOwnProperty(key)) {
+        <span class="keyword">if</span> (i >= start) {
+          <span class="keyword">if</span> (i > end) {
+            <span class="keyword">break</span>;
+          }
+          <span class="keyword">var</span> item = thisSet[key];
+          newSet[key] = cb.call(context, item, key.substr(PREFIX.length), i);
+        }
+        i++;
+      }
+    }
+    <span class="keyword">return</span> <span class="keyword">new</span> OrderedMapImpl(newSet, length);
+  },
+
+  <span class="comment">/**
+   * Function filter API. Returns new `OrderedMap`.
+   *
+   * @param {Function} cb Callback to invoke for each item.
+   * @param {Object?=} context Context to invoke callback from.
+   * @return {OrderedMap} OrderedMap that results from filtering.
+   */</span>
+  filter: <span class="function"><span class="keyword">function</span> <span class="params">(cb, context)</span> {</span>
+    <span class="keyword">return</span> <span class="keyword">this</span>.filterRange(cb, <span class="number">0</span>, <span class="keyword">this</span>.length, context);
+  },
+
+  <span class="comment">/**
+   * The callback `cb` is invoked with the arguments (item, key,
+   * indexInOriginal).
+   *
+   * @param {Function} cb Returns true if item should be in result.
+   * @param {number} start Start index of filter range.
+   * @param {number} length End index of map range.
+   * @param {*!?} context Context of callback invocation.
+   * @return {OrderedMap} OrderedMap resulting from filtering the range.
+   */</span>
+  filterRange: <span class="function"><span class="keyword">function</span> <span class="params">(cb, start, length, context)</span> {</span>
+    <span class="keyword">var</span> newSet = {};
+    <span class="keyword">var</span> newSetLength = <span class="number">0</span>;
+    <span class="keyword">this</span>.forEachRange(<span class="function"><span class="keyword">function</span> <span class="params">(item, key, originalIndex)</span> {</span>
+      <span class="keyword">if</span> (cb.call(context, item, key, originalIndex)) {
+        <span class="keyword">var</span> normalizedKey = PREFIX + key;
+        newSet[normalizedKey] = item;
+        newSetLength++;
+      }
+    }, start, length);
+    <span class="keyword">return</span> <span class="keyword">new</span> OrderedMapImpl(newSet, newSetLength);
+  },
+
+  forEach: <span class="function"><span class="keyword">function</span> <span class="params">(cb, context)</span> {</span>
+    <span class="keyword">this</span>.forEachRange(cb, <span class="number">0</span>, <span class="keyword">this</span>.length, context);
+  },
+
+  forEachRange: <span class="function"><span class="keyword">function</span> <span class="params">(cb, start, length, context)</span> {</span>
+    assertValidRangeIndices(start, length, <span class="keyword">this</span>.length);
+    <span class="keyword">var</span> thisSet = <span class="keyword">this</span>._normalizedObj;
+    <span class="keyword">var</span> i = <span class="number">0</span>;
+    <span class="keyword">var</span> end = start + length - <span class="number">1</span>;
+    <span class="keyword">for</span> (<span class="keyword">var</span> key <span class="keyword">in</span> thisSet) {
+      <span class="keyword">if</span> (thisSet.hasOwnProperty(key)) {
+        <span class="keyword">if</span> (i >= start) {
+          <span class="keyword">if</span> (i > end) {
+            <span class="keyword">break</span>;
+          }
+          <span class="keyword">var</span> item = thisSet[key];
+          cb.call(context, item, key.substr(PREFIX.length), i);
+        }
+        i++;
+      }
+    }
+  },
+
+  <span class="comment">/**
+   * Even though `mapRange`/`forEachKeyRange` allow zero length mappings, we'll
+   * impose an additional restriction here that the length of mapping be greater
+   * than zero - the only reason is that there are many ways to express length
+   * zero in terms of two keys and that is confusing.
+   */</span>
+  mapKeyRange: <span class="function"><span class="keyword">function</span> <span class="params">(cb, startKey, endKey, context)</span> {</span>
+    <span class="keyword">var</span> startIndex = <span class="keyword">this</span>.indexOfKey(startKey);
+    <span class="keyword">var</span> endIndex = <span class="keyword">this</span>.indexOfKey(endKey);
+    !(startIndex !== <span class="literal">undefined</span> &amp;&amp; endIndex !== <span class="literal">undefined</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'mapKeyRange must be given keys that are present.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    !(endIndex >= startIndex) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'OrderedMap.mapKeyRange(...): `endKey` must not come before `startIndex`.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    <span class="keyword">return</span> <span class="keyword">this</span>.mapRange(cb, startIndex, endIndex - startIndex + <span class="number">1</span>, context);
+  },
+
+  forEachKeyRange: <span class="function"><span class="keyword">function</span> <span class="params">(cb, startKey, endKey, context)</span> {</span>
+    <span class="keyword">var</span> startIndex = <span class="keyword">this</span>.indexOfKey(startKey);
+    <span class="keyword">var</span> endIndex = <span class="keyword">this</span>.indexOfKey(endKey);
+    !(startIndex !== <span class="literal">undefined</span> &amp;&amp; endIndex !== <span class="literal">undefined</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'forEachKeyRange must be given keys that are present.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    !(endIndex >= startIndex) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'OrderedMap.forEachKeyRange(...): `endKey` must not come before '</span> + <span class="string">'`startIndex`.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    <span class="keyword">this</span>.forEachRange(cb, startIndex, endIndex - startIndex + <span class="number">1</span>, context);
+  },
+
+  <span class="comment">/**
+   * @param {number} pos Index to search for key at.
+   * @return {string|undefined} Either the key at index `pos` or undefined if
+   * not in map.
+   */</span>
+  keyAtIndex: <span class="function"><span class="keyword">function</span> <span class="params">(pos)</span> {</span>
+    <span class="keyword">var</span> computedPositions = <span class="keyword">this</span>._getOrComputePositions();
+    <span class="keyword">var</span> keyAtPos = computedPositions.keyByIndex[pos];
+    <span class="keyword">return</span> keyAtPos ? keyAtPos.substr(PREFIX.length) : <span class="literal">undefined</span>;
+  },
+
+  <span class="comment">/**
+   * @param {string} key String key from which to find the next key.
+   * @return {string|undefined} Either the next key, or undefined if there is no
+   * next key.
+   * @throws Error if `key` is not in this `OrderedMap`.
+   */</span>
+  keyAfter: <span class="function"><span class="keyword">function</span> <span class="params">(key)</span> {</span>
+    <span class="keyword">return</span> <span class="keyword">this</span>.nthKeyAfter(key, <span class="number">1</span>);
+  },
+
+  <span class="comment">/**
+   * @param {string} key String key from which to find the preceding key.
+   * @return {string|undefined} Either the preceding key, or undefined if there
+   * is no preceding.key.
+   * @throws Error if `key` is not in this `OrderedMap`.
+   */</span>
+  keyBefore: <span class="function"><span class="keyword">function</span> <span class="params">(key)</span> {</span>
+    <span class="keyword">return</span> <span class="keyword">this</span>.nthKeyBefore(key, <span class="number">1</span>);
+  },
+
+  <span class="comment">/**
+   * @param {string} key String key from which to find a following key.
+   * @param {number} n Distance to scan forward after `key`.
+   * @return {string|undefined} Either the nth key after `key`, or undefined if
+   * there is no next key.
+   * @throws Error if `key` is not in this `OrderedMap`.
+   */</span>
+  nthKeyAfter: <span class="function"><span class="keyword">function</span> <span class="params">(key, n)</span> {</span>
+    <span class="keyword">var</span> curIndex = <span class="keyword">this</span>.indexOfKey(key);
+    !(curIndex !== <span class="literal">undefined</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'OrderedMap.nthKeyAfter: The key `%s` does not exist in this instance.'</span>, key) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    <span class="keyword">return</span> <span class="keyword">this</span>.keyAtIndex(curIndex + n);
+  },
+
+  <span class="comment">/**
+   * @param {string} key String key from which to find a preceding key.
+   * @param {number} n Distance to scan backwards before `key`.
+   * @return {string|undefined} Either the nth key before `key`, or undefined if
+   * there is no previous key.
+   * @throws Error if `key` is not in this `OrderedMap`.
+   */</span>
+  nthKeyBefore: <span class="function"><span class="keyword">function</span> <span class="params">(key, n)</span> {</span>
+    <span class="keyword">return</span> <span class="keyword">this</span>.nthKeyAfter(key, -n);
+  },
+
+  <span class="comment">/**
+   * @param {string} key Key to find the index of.
+   * @return {number|undefined} Index of the provided key, or `undefined` if the
+   * key is not found.
+   */</span>
+  indexOfKey: <span class="function"><span class="keyword">function</span> <span class="params">(key)</span> {</span>
+    assertValidPublicKey(key);
+    <span class="keyword">var</span> normalizedKey = PREFIX + key;
+    <span class="keyword">var</span> computedPositions = <span class="keyword">this</span>._getOrComputePositions();
+    <span class="keyword">var</span> computedPosition = computedPositions.indexByKey[normalizedKey];
+    <span class="comment">// Just writing it this way to make it clear this is intentional.</span>
+    <span class="keyword">return</span> computedPosition === <span class="literal">undefined</span> ? <span class="literal">undefined</span> : computedPosition;
+  },
+
+  <span class="comment">/**
+   * @return {Array} An ordered array of this object's values.
+   */</span>
+  toArray: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">var</span> result = [];
+    <span class="keyword">var</span> thisSet = <span class="keyword">this</span>._normalizedObj;
+    <span class="keyword">for</span> (<span class="keyword">var</span> key <span class="keyword">in</span> thisSet) {
+      <span class="keyword">if</span> (thisSet.hasOwnProperty(key)) {
+        result.push(thisSet[key]);
+      }
+    }
+    <span class="keyword">return</span> result;
+  },
+
+  <span class="comment">/**
+   * Finds the key at a given position, or indicates via `undefined` that that
+   * position does not exist in the `OrderedMap`. It is appropriate to return
+   * undefined, indicating that the key doesn't exist in the `OrderedMap`
+   * because `undefined` is not ever a valid `OrderedMap` key.
+   *
+   * @private
+   * @return {string?} Name of the item at position `pos`, or `undefined` if
+   * there is no item at that position.
+   */</span>
+  _getOrComputePositions: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="comment">// TODO: Entertain computing this at construction time in some less</span>
+    <span class="comment">// performance critical paths.</span>
+    <span class="keyword">var</span> computedPositions = <span class="keyword">this</span>._computedPositions;
+    <span class="keyword">if</span> (!computedPositions) {
+      <span class="keyword">this</span>._computePositions();
+    }
+    <span class="keyword">return</span> <span class="keyword">this</span>._computedPositions;
+  },
+
+  <span class="comment">/**
+   * Precomputes the index/key mapping for future lookup. Since `OrderedMap`s
+   * are immutable, there is only ever a need to perform this once.
+   * @private
+   */</span>
+  _computePositions: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">this</span>._computedPositions = {
+      keyByIndex: {},
+      indexByKey: {}
+    };
+    <span class="keyword">var</span> keyByIndex = <span class="keyword">this</span>._computedPositions.keyByIndex;
+    <span class="keyword">var</span> indexByKey = <span class="keyword">this</span>._computedPositions.indexByKey;
+    <span class="keyword">var</span> index = <span class="number">0</span>;
+    <span class="keyword">var</span> thisSet = <span class="keyword">this</span>._normalizedObj;
+    <span class="keyword">for</span> (<span class="keyword">var</span> key <span class="keyword">in</span> thisSet) {
+      <span class="keyword">if</span> (thisSet.hasOwnProperty(key)) {
+        keyByIndex[index] = key;
+        indexByKey[key] = index;
+        index++;
+      }
+    }
+  }
+};
+
+assign(OrderedMapImpl.prototype, OrderedMapMethods);
+
+<span class="keyword">var</span> OrderedMap = {
+  from: <span class="function"><span class="keyword">function</span> <span class="params">(orderedMap)</span> {</span>
+    !(orderedMap <span class="keyword">instanceof</span> OrderedMapImpl) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'OrderedMap.from(...): Expected an OrderedMap instance.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    <span class="keyword">return</span> _fromNormalizedObjects(orderedMap._normalizedObj, <span class="literal">null</span>);
+  },
+
+  fromArray: <span class="function"><span class="keyword">function</span> <span class="params">(arr, keyExtractor)</span> {</span>
+    !Array.isArray(arr) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'OrderedMap.fromArray(...): First argument must be an array.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    !(<span class="keyword">typeof</span> keyExtractor === <span class="string">'function'</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'OrderedMap.fromArray(...): Second argument must be a function used '</span> + <span class="string">'to determine the unique key for each entry.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    <span class="keyword">return</span> <span class="keyword">new</span> OrderedMapImpl(extractObjectFromArray(arr, keyExtractor), arr.length);
+  }
+};
+
+module.exports = OrderedMap;</code></pre>

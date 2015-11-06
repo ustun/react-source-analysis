@@ -1,0 +1,43 @@
+<h1>adler32.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule adler32
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> MOD = <span class="number">65521</span>;
+
+<span class="comment">// adler32 is not cryptographically strong, and is only used to sanity check that</span>
+<span class="comment">// markup generated on the server matches the markup generated on the client.</span>
+<span class="comment">// This implementation (a modified version of the SheetJS version) has been optimized</span>
+<span class="comment">// for our use case, at the expense of conforming to the adler32 specification</span>
+<span class="comment">// for non-ascii inputs.</span>
+<span class="function"><span class="keyword">function</span> <span class="title">adler32</span><span class="params">(data)</span> {</span>
+  <span class="keyword">var</span> a = <span class="number">1</span>;
+  <span class="keyword">var</span> b = <span class="number">0</span>;
+  <span class="keyword">var</span> i = <span class="number">0</span>;
+  <span class="keyword">var</span> l = data.length;
+  <span class="keyword">var</span> m = l &amp; ~<span class="number">0x3</span>;
+  <span class="keyword">while</span> (i &lt; m) {
+    <span class="keyword">for</span> (; i &lt; Math.min(i + <span class="number">4096</span>, m); i += <span class="number">4</span>) {
+      b += (a += data.charCodeAt(i)) + (a += data.charCodeAt(i + <span class="number">1</span>)) + (a += data.charCodeAt(i + <span class="number">2</span>)) + (a += data.charCodeAt(i + <span class="number">3</span>));
+    }
+    a %= MOD;
+    b %= MOD;
+  }
+  <span class="keyword">for</span> (; i &lt; l; i++) {
+    b += a += data.charCodeAt(i);
+  }
+  a %= MOD;
+  b %= MOD;
+  <span class="keyword">return</span> a | b &lt;&lt; <span class="number">16</span>;
+}
+
+module.exports = adler32;</code></pre>

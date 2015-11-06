@@ -1,0 +1,390 @@
+<h1>BeforeInputEventPlugin.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015 Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule BeforeInputEventPlugin
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> EventConstants = require(<span class="string">'./EventConstants'</span>);
+<span class="keyword">var</span> EventPropagators = require(<span class="string">'./EventPropagators'</span>);
+<span class="keyword">var</span> ExecutionEnvironment = require(<span class="string">'fbjs/lib/ExecutionEnvironment'</span>);
+<span class="keyword">var</span> FallbackCompositionState = require(<span class="string">'./FallbackCompositionState'</span>);
+<span class="keyword">var</span> SyntheticCompositionEvent = require(<span class="string">'./SyntheticCompositionEvent'</span>);
+<span class="keyword">var</span> SyntheticInputEvent = require(<span class="string">'./SyntheticInputEvent'</span>);
+
+<span class="keyword">var</span> keyOf = require(<span class="string">'fbjs/lib/keyOf'</span>);
+
+<span class="keyword">var</span> END_KEYCODES = [<span class="number">9</span>, <span class="number">13</span>, <span class="number">27</span>, <span class="number">32</span>]; <span class="comment">// Tab, Return, Esc, Space</span>
+<span class="keyword">var</span> START_KEYCODE = <span class="number">229</span>;
+
+<span class="keyword">var</span> canUseCompositionEvent = ExecutionEnvironment.canUseDOM &amp;&amp; <span class="string">'CompositionEvent'</span> <span class="keyword">in</span> window;
+
+<span class="keyword">var</span> documentMode = <span class="literal">null</span>;
+<span class="keyword">if</span> (ExecutionEnvironment.canUseDOM &amp;&amp; <span class="string">'documentMode'</span> <span class="keyword">in</span> document) {
+  documentMode = document.documentMode;
+}
+
+<span class="comment">// Webkit offers a very useful `textInput` event that can be used to</span>
+<span class="comment">// directly represent `beforeInput`. The IE `textinput` event is not as</span>
+<span class="comment">// useful, so we don't use it.</span>
+<span class="keyword">var</span> canUseTextInputEvent = ExecutionEnvironment.canUseDOM &amp;&amp; <span class="string">'TextEvent'</span> <span class="keyword">in</span> window &amp;&amp; !documentMode &amp;&amp; !isPresto();
+
+<span class="comment">// In IE9+, we have access to composition events, but the data supplied</span>
+<span class="comment">// by the native compositionend event may be incorrect. Japanese ideographic</span>
+<span class="comment">// spaces, for instance (\u3000) are not recorded correctly.</span>
+<span class="keyword">var</span> useFallbackCompositionData = ExecutionEnvironment.canUseDOM &amp;&amp; (!canUseCompositionEvent || documentMode &amp;&amp; documentMode > <span class="number">8</span> &amp;&amp; documentMode &lt;= <span class="number">11</span>);
+
+<span class="comment">/**
+ * Opera &lt;= 12 includes TextEvent in window, but does not fire
+ * text input events. Rely on keypress instead.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">isPresto</span><span class="params">()</span> {</span>
+  <span class="keyword">var</span> opera = window.opera;
+  <span class="keyword">return</span> <span class="keyword">typeof</span> opera === <span class="string">'object'</span> &amp;&amp; <span class="keyword">typeof</span> opera.version === <span class="string">'function'</span> &amp;&amp; parseInt(opera.version(), <span class="number">10</span>) &lt;= <span class="number">12</span>;
+}
+
+<span class="keyword">var</span> SPACEBAR_CODE = <span class="number">32</span>;
+<span class="keyword">var</span> SPACEBAR_CHAR = String.fromCharCode(SPACEBAR_CODE);
+
+<span class="keyword">var</span> topLevelTypes = EventConstants.topLevelTypes;
+
+<span class="comment">// Events and their corresponding property names.</span>
+<span class="keyword">var</span> eventTypes = {
+  beforeInput: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onBeforeInput: <span class="literal">null</span> }),
+      captured: keyOf({ onBeforeInputCapture: <span class="literal">null</span> })
+    },
+    dependencies: [topLevelTypes.topCompositionEnd, topLevelTypes.topKeyPress, topLevelTypes.topTextInput, topLevelTypes.topPaste]
+  },
+  compositionEnd: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onCompositionEnd: <span class="literal">null</span> }),
+      captured: keyOf({ onCompositionEndCapture: <span class="literal">null</span> })
+    },
+    dependencies: [topLevelTypes.topBlur, topLevelTypes.topCompositionEnd, topLevelTypes.topKeyDown, topLevelTypes.topKeyPress, topLevelTypes.topKeyUp, topLevelTypes.topMouseDown]
+  },
+  compositionStart: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onCompositionStart: <span class="literal">null</span> }),
+      captured: keyOf({ onCompositionStartCapture: <span class="literal">null</span> })
+    },
+    dependencies: [topLevelTypes.topBlur, topLevelTypes.topCompositionStart, topLevelTypes.topKeyDown, topLevelTypes.topKeyPress, topLevelTypes.topKeyUp, topLevelTypes.topMouseDown]
+  },
+  compositionUpdate: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onCompositionUpdate: <span class="literal">null</span> }),
+      captured: keyOf({ onCompositionUpdateCapture: <span class="literal">null</span> })
+    },
+    dependencies: [topLevelTypes.topBlur, topLevelTypes.topCompositionUpdate, topLevelTypes.topKeyDown, topLevelTypes.topKeyPress, topLevelTypes.topKeyUp, topLevelTypes.topMouseDown]
+  }
+};
+
+<span class="comment">// Track whether we've ever handled a keypress on the space key.</span>
+<span class="keyword">var</span> hasSpaceKeypress = <span class="literal">false</span>;
+
+<span class="comment">/**
+ * Return whether a native keypress event is assumed to be a command.
+ * This is required because Firefox fires `keypress` events for key commands
+ * (cut, copy, select-all, etc.) even though no character is inserted.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">isKeypressCommand</span><span class="params">(nativeEvent)</span> {</span>
+  <span class="keyword">return</span> (nativeEvent.ctrlKey || nativeEvent.altKey || nativeEvent.metaKey) &amp;&amp;
+  <span class="comment">// ctrlKey &amp;&amp; altKey is equivalent to AltGr, and is not a command.</span>
+  !(nativeEvent.ctrlKey &amp;&amp; nativeEvent.altKey);
+}
+
+<span class="comment">/**
+ * Translate native top level events into event types.
+ *
+ * @param {string} topLevelType
+ * @return {object}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getCompositionEventType</span><span class="params">(topLevelType)</span> {</span>
+  <span class="keyword">switch</span> (topLevelType) {
+    <span class="keyword">case</span> topLevelTypes.topCompositionStart:
+      <span class="keyword">return</span> eventTypes.compositionStart;
+    <span class="keyword">case</span> topLevelTypes.topCompositionEnd:
+      <span class="keyword">return</span> eventTypes.compositionEnd;
+    <span class="keyword">case</span> topLevelTypes.topCompositionUpdate:
+      <span class="keyword">return</span> eventTypes.compositionUpdate;
+  }
+}
+
+<span class="comment">/**
+ * Does our fallback best-guess model think this event signifies that
+ * composition has begun?
+ *
+ * @param {string} topLevelType
+ * @param {object} nativeEvent
+ * @return {boolean}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">isFallbackCompositionStart</span><span class="params">(topLevelType, nativeEvent)</span> {</span>
+  <span class="keyword">return</span> topLevelType === topLevelTypes.topKeyDown &amp;&amp; nativeEvent.keyCode === START_KEYCODE;
+}
+
+<span class="comment">/**
+ * Does our fallback mode think that this event is the end of composition?
+ *
+ * @param {string} topLevelType
+ * @param {object} nativeEvent
+ * @return {boolean}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">isFallbackCompositionEnd</span><span class="params">(topLevelType, nativeEvent)</span> {</span>
+  <span class="keyword">switch</span> (topLevelType) {
+    <span class="keyword">case</span> topLevelTypes.topKeyUp:
+      <span class="comment">// Command keys insert or clear IME input.</span>
+      <span class="keyword">return</span> END_KEYCODES.indexOf(nativeEvent.keyCode) !== -<span class="number">1</span>;
+    <span class="keyword">case</span> topLevelTypes.topKeyDown:
+      <span class="comment">// Expect IME keyCode on each keydown. If we get any other</span>
+      <span class="comment">// code we must have exited earlier.</span>
+      <span class="keyword">return</span> nativeEvent.keyCode !== START_KEYCODE;
+    <span class="keyword">case</span> topLevelTypes.topKeyPress:
+    <span class="keyword">case</span> topLevelTypes.topMouseDown:
+    <span class="keyword">case</span> topLevelTypes.topBlur:
+      <span class="comment">// Events are not possible without cancelling IME.</span>
+      <span class="keyword">return</span> <span class="literal">true</span>;
+    <span class="keyword">default</span>:
+      <span class="keyword">return</span> <span class="literal">false</span>;
+  }
+}
+
+<span class="comment">/**
+ * Google Input Tools provides composition data via a CustomEvent,
+ * with the `data` property populated in the `detail` object. If this
+ * is available on the event object, use it. If not, this is a plain
+ * composition event and we have nothing special to extract.
+ *
+ * @param {object} nativeEvent
+ * @return {?string}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getDataFromCustomEvent</span><span class="params">(nativeEvent)</span> {</span>
+  <span class="keyword">var</span> detail = nativeEvent.detail;
+  <span class="keyword">if</span> (<span class="keyword">typeof</span> detail === <span class="string">'object'</span> &amp;&amp; <span class="string">'data'</span> <span class="keyword">in</span> detail) {
+    <span class="keyword">return</span> detail.data;
+  }
+  <span class="keyword">return</span> <span class="literal">null</span>;
+}
+
+<span class="comment">// Track the current IME composition fallback object, if any.</span>
+<span class="keyword">var</span> currentComposition = <span class="literal">null</span>;
+
+<span class="comment">/**
+ * @return {?object} A SyntheticCompositionEvent.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">extractCompositionEvent</span><span class="params">(topLevelType, targetInst, nativeEvent, nativeEventTarget)</span> {</span>
+  <span class="keyword">var</span> eventType;
+  <span class="keyword">var</span> fallbackData;
+
+  <span class="keyword">if</span> (canUseCompositionEvent) {
+    eventType = getCompositionEventType(topLevelType);
+  } <span class="keyword">else</span> <span class="keyword">if</span> (!currentComposition) {
+    <span class="keyword">if</span> (isFallbackCompositionStart(topLevelType, nativeEvent)) {
+      eventType = eventTypes.compositionStart;
+    }
+  } <span class="keyword">else</span> <span class="keyword">if</span> (isFallbackCompositionEnd(topLevelType, nativeEvent)) {
+    eventType = eventTypes.compositionEnd;
+  }
+
+  <span class="keyword">if</span> (!eventType) {
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+
+  <span class="keyword">if</span> (useFallbackCompositionData) {
+    <span class="comment">// The current composition is stored statically and must not be</span>
+    <span class="comment">// overwritten while composition continues.</span>
+    <span class="keyword">if</span> (!currentComposition &amp;&amp; eventType === eventTypes.compositionStart) {
+      currentComposition = FallbackCompositionState.getPooled(nativeEventTarget);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (eventType === eventTypes.compositionEnd) {
+      <span class="keyword">if</span> (currentComposition) {
+        fallbackData = currentComposition.getData();
+      }
+    }
+  }
+
+  <span class="keyword">var</span> event = SyntheticCompositionEvent.getPooled(eventType, targetInst, nativeEvent, nativeEventTarget);
+
+  <span class="keyword">if</span> (fallbackData) {
+    <span class="comment">// Inject data generated from fallback path into the synthetic event.</span>
+    <span class="comment">// This matches the property of native CompositionEventInterface.</span>
+    event.data = fallbackData;
+  } <span class="keyword">else</span> {
+    <span class="keyword">var</span> customData = getDataFromCustomEvent(nativeEvent);
+    <span class="keyword">if</span> (customData !== <span class="literal">null</span>) {
+      event.data = customData;
+    }
+  }
+
+  EventPropagators.accumulateTwoPhaseDispatches(event);
+  <span class="keyword">return</span> event;
+}
+
+<span class="comment">/**
+ * @param {string} topLevelType Record from `EventConstants`.
+ * @param {object} nativeEvent Native browser event.
+ * @return {?string} The string corresponding to this `beforeInput` event.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getNativeBeforeInputChars</span><span class="params">(topLevelType, nativeEvent)</span> {</span>
+  <span class="keyword">switch</span> (topLevelType) {
+    <span class="keyword">case</span> topLevelTypes.topCompositionEnd:
+      <span class="keyword">return</span> getDataFromCustomEvent(nativeEvent);
+    <span class="keyword">case</span> topLevelTypes.topKeyPress:
+      <span class="comment">/**
+       * If native `textInput` events are available, our goal is to make
+       * use of them. However, there is a special case: the spacebar key.
+       * In Webkit, preventing default on a spacebar `textInput` event
+       * cancels character insertion, but it *also* causes the browser
+       * to fall back to its default spacebar behavior of scrolling the
+       * page.
+       *
+       * Tracking at:
+       * https://code.google.com/p/chromium/issues/detail?id=355103
+       *
+       * To avoid this issue, use the keypress event as if no `textInput`
+       * event is available.
+       */</span>
+      <span class="keyword">var</span> which = nativeEvent.which;
+      <span class="keyword">if</span> (which !== SPACEBAR_CODE) {
+        <span class="keyword">return</span> <span class="literal">null</span>;
+      }
+
+      hasSpaceKeypress = <span class="literal">true</span>;
+      <span class="keyword">return</span> SPACEBAR_CHAR;
+
+    <span class="keyword">case</span> topLevelTypes.topTextInput:
+      <span class="comment">// Record the characters to be added to the DOM.</span>
+      <span class="keyword">var</span> chars = nativeEvent.data;
+
+      <span class="comment">// If it's a spacebar character, assume that we have already handled</span>
+      <span class="comment">// it at the keypress level and bail immediately. Android Chrome</span>
+      <span class="comment">// doesn't give us keycodes, so we need to blacklist it.</span>
+      <span class="keyword">if</span> (chars === SPACEBAR_CHAR &amp;&amp; hasSpaceKeypress) {
+        <span class="keyword">return</span> <span class="literal">null</span>;
+      }
+
+      <span class="keyword">return</span> chars;
+
+    <span class="keyword">default</span>:
+      <span class="comment">// For other native event types, do nothing.</span>
+      <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+}
+
+<span class="comment">/**
+ * For browsers that do not provide the `textInput` event, extract the
+ * appropriate string to use for SyntheticInputEvent.
+ *
+ * @param {string} topLevelType Record from `EventConstants`.
+ * @param {object} nativeEvent Native browser event.
+ * @return {?string} The fallback string for this `beforeInput` event.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getFallbackBeforeInputChars</span><span class="params">(topLevelType, nativeEvent)</span> {</span>
+  <span class="comment">// If we are currently composing (IME) and using a fallback to do so,</span>
+  <span class="comment">// try to extract the composed characters from the fallback object.</span>
+  <span class="keyword">if</span> (currentComposition) {
+    <span class="keyword">if</span> (topLevelType === topLevelTypes.topCompositionEnd || isFallbackCompositionEnd(topLevelType, nativeEvent)) {
+      <span class="keyword">var</span> chars = currentComposition.getData();
+      FallbackCompositionState.release(currentComposition);
+      currentComposition = <span class="literal">null</span>;
+      <span class="keyword">return</span> chars;
+    }
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+
+  <span class="keyword">switch</span> (topLevelType) {
+    <span class="keyword">case</span> topLevelTypes.topPaste:
+      <span class="comment">// If a paste event occurs after a keypress, throw out the input</span>
+      <span class="comment">// chars. Paste events should not lead to BeforeInput events.</span>
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    <span class="keyword">case</span> topLevelTypes.topKeyPress:
+      <span class="comment">/**
+       * As of v27, Firefox may fire keypress events even when no character
+       * will be inserted. A few possibilities:
+       *
+       * - `which` is `0`. Arrow keys, Esc key, etc.
+       *
+       * - `which` is the pressed key code, but no char is available.
+       *   Ex: 'AltGr + d` in Polish. There is no modified character for
+       *   this key combination and no character is inserted into the
+       *   document, but FF fires the keypress for char code `100` anyway.
+       *   No `input` event will occur.
+       *
+       * - `which` is the pressed key code, but a command combination is
+       *   being used. Ex: `Cmd+C`. No character is inserted, and no
+       *   `input` event will occur.
+       */</span>
+      <span class="keyword">if</span> (nativeEvent.which &amp;&amp; !isKeypressCommand(nativeEvent)) {
+        <span class="keyword">return</span> String.fromCharCode(nativeEvent.which);
+      }
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    <span class="keyword">case</span> topLevelTypes.topCompositionEnd:
+      <span class="keyword">return</span> useFallbackCompositionData ? <span class="literal">null</span> : nativeEvent.data;
+    <span class="keyword">default</span>:
+      <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+}
+
+<span class="comment">/**
+ * Extract a SyntheticInputEvent for `beforeInput`, based on either native
+ * `textInput` or fallback behavior.
+ *
+ * @return {?object} A SyntheticInputEvent.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">extractBeforeInputEvent</span><span class="params">(topLevelType, targetInst, nativeEvent, nativeEventTarget)</span> {</span>
+  <span class="keyword">var</span> chars;
+
+  <span class="keyword">if</span> (canUseTextInputEvent) {
+    chars = getNativeBeforeInputChars(topLevelType, nativeEvent);
+  } <span class="keyword">else</span> {
+    chars = getFallbackBeforeInputChars(topLevelType, nativeEvent);
+  }
+
+  <span class="comment">// If no characters are being inserted, no BeforeInput event should</span>
+  <span class="comment">// be fired.</span>
+  <span class="keyword">if</span> (!chars) {
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+
+  <span class="keyword">var</span> event = SyntheticInputEvent.getPooled(eventTypes.beforeInput, targetInst, nativeEvent, nativeEventTarget);
+
+  event.data = chars;
+  EventPropagators.accumulateTwoPhaseDispatches(event);
+  <span class="keyword">return</span> event;
+}
+
+<span class="comment">/**
+ * Create an `onBeforeInput` event to match
+ * http://www.w3.org/TR/2013/WD-DOM-Level-3-Events-20131105/#events-inputevents.
+ *
+ * This event plugin is based on the native `textInput` event
+ * available in Chrome, Safari, Opera, and IE. This event fires after
+ * `onKeyPress` and `onCompositionEnd`, but before `onInput`.
+ *
+ * `beforeInput` is spec'd but not implemented in any browsers, and
+ * the `input` event does not provide any useful information about what has
+ * actually been added, contrary to the spec. Thus, `textInput` is the best
+ * available event to identify the characters that have actually been inserted
+ * into the target node.
+ *
+ * This plugin is also responsible for emitting `composition` events, thus
+ * allowing us to share composition fallback code for both `beforeInput` and
+ * `composition` event types.
+ */</span>
+<span class="keyword">var</span> BeforeInputEventPlugin = {
+
+  eventTypes: eventTypes,
+
+  extractEvents: <span class="function"><span class="keyword">function</span> <span class="params">(topLevelType, targetInst, nativeEvent, nativeEventTarget)</span> {</span>
+    <span class="keyword">return</span> [extractCompositionEvent(topLevelType, targetInst, nativeEvent, nativeEventTarget), extractBeforeInputEvent(topLevelType, targetInst, nativeEvent, nativeEventTarget)];
+  }
+};
+
+module.exports = BeforeInputEventPlugin;</code></pre>

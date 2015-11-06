@@ -1,0 +1,225 @@
+<h1>ReactUpdates.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactUpdates
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> CallbackQueue = require(<span class="string">'./CallbackQueue'</span>);
+<span class="keyword">var</span> PooledClass = require(<span class="string">'./PooledClass'</span>);
+<span class="keyword">var</span> ReactPerf = require(<span class="string">'./ReactPerf'</span>);
+<span class="keyword">var</span> ReactReconciler = require(<span class="string">'./ReactReconciler'</span>);
+<span class="keyword">var</span> Transaction = require(<span class="string">'./Transaction'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+
+<span class="keyword">var</span> dirtyComponents = [];
+<span class="keyword">var</span> asapCallbackQueue = CallbackQueue.getPooled();
+<span class="keyword">var</span> asapEnqueued = <span class="literal">false</span>;
+
+<span class="keyword">var</span> batchingStrategy = <span class="literal">null</span>;
+
+<span class="function"><span class="keyword">function</span> <span class="title">ensureInjected</span><span class="params">()</span> {</span>
+  !(ReactUpdates.ReactReconcileTransaction &amp;&amp; batchingStrategy) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'ReactUpdates: must inject a reconcile transaction class and batching '</span> + <span class="string">'strategy'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+}
+
+<span class="keyword">var</span> NESTED_UPDATES = {
+  initialize: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">this</span>.dirtyComponentsLength = dirtyComponents.length;
+  },
+  close: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">if</span> (<span class="keyword">this</span>.dirtyComponentsLength !== dirtyComponents.length) {
+      <span class="comment">// Additional updates were enqueued by componentDidUpdate handlers or</span>
+      <span class="comment">// similar; before our own UPDATE_QUEUEING wrapper closes, we want to run</span>
+      <span class="comment">// these new updates so that if A's componentDidUpdate calls setState on</span>
+      <span class="comment">// B, B will update before the callback A's updater provided when calling</span>
+      <span class="comment">// setState.</span>
+      dirtyComponents.splice(<span class="number">0</span>, <span class="keyword">this</span>.dirtyComponentsLength);
+      flushBatchedUpdates();
+    } <span class="keyword">else</span> {
+      dirtyComponents.length = <span class="number">0</span>;
+    }
+  }
+};
+
+<span class="keyword">var</span> UPDATE_QUEUEING = {
+  initialize: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">this</span>.callbackQueue.reset();
+  },
+  close: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">this</span>.callbackQueue.notifyAll();
+  }
+};
+
+<span class="keyword">var</span> TRANSACTION_WRAPPERS = [NESTED_UPDATES, UPDATE_QUEUEING];
+
+<span class="function"><span class="keyword">function</span> <span class="title">ReactUpdatesFlushTransaction</span><span class="params">()</span> {</span>
+  <span class="keyword">this</span>.reinitializeTransaction();
+  <span class="keyword">this</span>.dirtyComponentsLength = <span class="literal">null</span>;
+  <span class="keyword">this</span>.callbackQueue = CallbackQueue.getPooled();
+  <span class="keyword">this</span>.reconcileTransaction = ReactUpdates.ReactReconcileTransaction.getPooled(
+  <span class="comment">/* useCreateElement */</span><span class="literal">true</span>);
+}
+
+assign(ReactUpdatesFlushTransaction.prototype, Transaction.Mixin, {
+  getTransactionWrappers: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> TRANSACTION_WRAPPERS;
+  },
+
+  destructor: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">this</span>.dirtyComponentsLength = <span class="literal">null</span>;
+    CallbackQueue.release(<span class="keyword">this</span>.callbackQueue);
+    <span class="keyword">this</span>.callbackQueue = <span class="literal">null</span>;
+    ReactUpdates.ReactReconcileTransaction.release(<span class="keyword">this</span>.reconcileTransaction);
+    <span class="keyword">this</span>.reconcileTransaction = <span class="literal">null</span>;
+  },
+
+  perform: <span class="function"><span class="keyword">function</span> <span class="params">(method, scope, a)</span> {</span>
+    <span class="comment">// Essentially calls `this.reconcileTransaction.perform(method, scope, a)`</span>
+    <span class="comment">// with this transaction's wrappers around it.</span>
+    <span class="keyword">return</span> Transaction.Mixin.perform.call(<span class="keyword">this</span>, <span class="keyword">this</span>.reconcileTransaction.perform, <span class="keyword">this</span>.reconcileTransaction, method, scope, a);
+  }
+});
+
+PooledClass.addPoolingTo(ReactUpdatesFlushTransaction);
+
+<span class="function"><span class="keyword">function</span> <span class="title">batchedUpdates</span><span class="params">(callback, a, b, c, d, e)</span> {</span>
+  ensureInjected();
+  batchingStrategy.batchedUpdates(callback, a, b, c, d, e);
+}
+
+<span class="comment">/**
+ * Array comparator for ReactComponents by mount ordering.
+ *
+ * @param {ReactComponent} c1 first component you're comparing
+ * @param {ReactComponent} c2 second component you're comparing
+ * @return {number} Return value usable by Array.prototype.sort().
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">mountOrderComparator</span><span class="params">(c1, c2)</span> {</span>
+  <span class="keyword">return</span> c1._mountOrder - c2._mountOrder;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">runBatchedUpdates</span><span class="params">(transaction)</span> {</span>
+  <span class="keyword">var</span> len = transaction.dirtyComponentsLength;
+  !(len === dirtyComponents.length) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Expected flush transaction\'s stored dirty-components length (%s) to '</span> + <span class="string">'match dirty-components array length (%s).'</span>, len, dirtyComponents.length) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+  <span class="comment">// Since reconciling a component higher in the owner hierarchy usually (not</span>
+  <span class="comment">// always -- see shouldComponentUpdate()) will reconcile children, reconcile</span>
+  <span class="comment">// them before their children by sorting the array.</span>
+  dirtyComponents.sort(mountOrderComparator);
+
+  <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; len; i++) {
+    <span class="comment">// If a component is unmounted before pending changes apply, it will still</span>
+    <span class="comment">// be here, but we assume that it has cleared its _pendingCallbacks and</span>
+    <span class="comment">// that performUpdateIfNecessary is a noop.</span>
+    <span class="keyword">var</span> component = dirtyComponents[i];
+
+    <span class="comment">// If performUpdateIfNecessary happens to enqueue any new updates, we</span>
+    <span class="comment">// shouldn't execute the callbacks until the next render happens, so</span>
+    <span class="comment">// stash the callbacks first</span>
+    <span class="keyword">var</span> callbacks = component._pendingCallbacks;
+    component._pendingCallbacks = <span class="literal">null</span>;
+
+    ReactReconciler.performUpdateIfNecessary(component, transaction.reconcileTransaction);
+
+    <span class="keyword">if</span> (callbacks) {
+      <span class="keyword">for</span> (<span class="keyword">var</span> j = <span class="number">0</span>; j &lt; callbacks.length; j++) {
+        transaction.callbackQueue.enqueue(callbacks[j], component.getPublicInstance());
+      }
+    }
+  }
+}
+
+<span class="keyword">var</span> flushBatchedUpdates = <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+  <span class="comment">// ReactUpdatesFlushTransaction's wrappers will clear the dirtyComponents</span>
+  <span class="comment">// array and perform any updates enqueued by mount-ready handlers (i.e.,</span>
+  <span class="comment">// componentDidUpdate) but we need to check here too in order to catch</span>
+  <span class="comment">// updates enqueued by setState callbacks and asap calls.</span>
+  <span class="keyword">while</span> (dirtyComponents.length || asapEnqueued) {
+    <span class="keyword">if</span> (dirtyComponents.length) {
+      <span class="keyword">var</span> transaction = ReactUpdatesFlushTransaction.getPooled();
+      transaction.perform(runBatchedUpdates, <span class="literal">null</span>, transaction);
+      ReactUpdatesFlushTransaction.release(transaction);
+    }
+
+    <span class="keyword">if</span> (asapEnqueued) {
+      asapEnqueued = <span class="literal">false</span>;
+      <span class="keyword">var</span> queue = asapCallbackQueue;
+      asapCallbackQueue = CallbackQueue.getPooled();
+      queue.notifyAll();
+      CallbackQueue.release(queue);
+    }
+  }
+};
+flushBatchedUpdates = ReactPerf.measure(<span class="string">'ReactUpdates'</span>, <span class="string">'flushBatchedUpdates'</span>, flushBatchedUpdates);
+
+<span class="comment">/**
+ * Mark a component as needing a rerender, adding an optional callback to a
+ * list of functions which will be executed once the rerender occurs.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">enqueueUpdate</span><span class="params">(component)</span> {</span>
+  ensureInjected();
+
+  <span class="comment">// Various parts of our code (such as ReactCompositeComponent's</span>
+  <span class="comment">// _renderValidatedComponent) assume that calls to render aren't nested;</span>
+  <span class="comment">// verify that that's the case. (This is called by each top-level update</span>
+  <span class="comment">// function, like setProps, setState, forceUpdate, etc.; creation and</span>
+  <span class="comment">// destruction of top-level components is guarded in ReactMount.)</span>
+
+  <span class="keyword">if</span> (!batchingStrategy.isBatchingUpdates) {
+    batchingStrategy.batchedUpdates(enqueueUpdate, component);
+    <span class="keyword">return</span>;
+  }
+
+  dirtyComponents.push(component);
+}
+
+<span class="comment">/**
+ * Enqueue a callback to be run at the end of the current batching cycle. Throws
+ * if no updates are currently being performed.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">asap</span><span class="params">(callback, context)</span> {</span>
+  !batchingStrategy.isBatchingUpdates ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'ReactUpdates.asap: Can\'t enqueue an asap callback in a context where'</span> + <span class="string">'updates are not being batched.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  asapCallbackQueue.enqueue(callback, context);
+  asapEnqueued = <span class="literal">true</span>;
+}
+
+<span class="keyword">var</span> ReactUpdatesInjection = {
+  injectReconcileTransaction: <span class="function"><span class="keyword">function</span> <span class="params">(ReconcileTransaction)</span> {</span>
+    !ReconcileTransaction ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'ReactUpdates: must provide a reconcile transaction class'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    ReactUpdates.ReactReconcileTransaction = ReconcileTransaction;
+  },
+
+  injectBatchingStrategy: <span class="function"><span class="keyword">function</span> <span class="params">(_batchingStrategy)</span> {</span>
+    !_batchingStrategy ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'ReactUpdates: must provide a batching strategy'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    !(<span class="keyword">typeof</span> _batchingStrategy.batchedUpdates === <span class="string">'function'</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'ReactUpdates: must provide a batchedUpdates() function'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    !(<span class="keyword">typeof</span> _batchingStrategy.isBatchingUpdates === <span class="string">'boolean'</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'ReactUpdates: must provide an isBatchingUpdates boolean attribute'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    batchingStrategy = _batchingStrategy;
+  }
+};
+
+<span class="keyword">var</span> ReactUpdates = {
+  <span class="comment">/**
+   * React references `ReactReconcileTransaction` using this property in order
+   * to allow dependency injection.
+   *
+   * @internal
+   */</span>
+  ReactReconcileTransaction: <span class="literal">null</span>,
+
+  batchedUpdates: batchedUpdates,
+  enqueueUpdate: enqueueUpdate,
+  flushBatchedUpdates: flushBatchedUpdates,
+  injection: ReactUpdatesInjection,
+  asap: asap
+};
+
+module.exports = ReactUpdates;</code></pre>

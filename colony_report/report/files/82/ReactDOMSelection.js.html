@@ -1,0 +1,213 @@
+<h1>ReactDOMSelection.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDOMSelection
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ExecutionEnvironment = require(<span class="string">'fbjs/lib/ExecutionEnvironment'</span>);
+
+<span class="keyword">var</span> getNodeForCharacterOffset = require(<span class="string">'./getNodeForCharacterOffset'</span>);
+<span class="keyword">var</span> getTextContentAccessor = require(<span class="string">'./getTextContentAccessor'</span>);
+
+<span class="comment">/**
+ * While `isCollapsed` is available on the Selection object and `collapsed`
+ * is available on the Range object, IE11 sometimes gets them wrong.
+ * If the anchor/focus nodes and offsets are the same, the range is collapsed.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">isCollapsed</span><span class="params">(anchorNode, anchorOffset, focusNode, focusOffset)</span> {</span>
+  <span class="keyword">return</span> anchorNode === focusNode &amp;&amp; anchorOffset === focusOffset;
+}
+
+<span class="comment">/**
+ * Get the appropriate anchor and focus node/offset pairs for IE.
+ *
+ * The catch here is that IE's selection API doesn't provide information
+ * about whether the selection is forward or backward, so we have to
+ * behave as though it's always forward.
+ *
+ * IE text differs from modern selection in that it behaves as though
+ * block elements end with a new line. This means character offsets will
+ * differ between the two APIs.
+ *
+ * @param {DOMElement} node
+ * @return {object}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getIEOffsets</span><span class="params">(node)</span> {</span>
+  <span class="keyword">var</span> selection = document.selection;
+  <span class="keyword">var</span> selectedRange = selection.createRange();
+  <span class="keyword">var</span> selectedLength = selectedRange.text.length;
+
+  <span class="comment">// Duplicate selection so we can move range without breaking user selection.</span>
+  <span class="keyword">var</span> fromStart = selectedRange.duplicate();
+  fromStart.moveToElementText(node);
+  fromStart.setEndPoint(<span class="string">'EndToStart'</span>, selectedRange);
+
+  <span class="keyword">var</span> startOffset = fromStart.text.length;
+  <span class="keyword">var</span> endOffset = startOffset + selectedLength;
+
+  <span class="keyword">return</span> {
+    start: startOffset,
+    end: endOffset
+  };
+}
+
+<span class="comment">/**
+ * @param {DOMElement} node
+ * @return {?object}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getModernOffsets</span><span class="params">(node)</span> {</span>
+  <span class="keyword">var</span> selection = window.getSelection &amp;&amp; window.getSelection();
+
+  <span class="keyword">if</span> (!selection || selection.rangeCount === <span class="number">0</span>) {
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+
+  <span class="keyword">var</span> anchorNode = selection.anchorNode;
+  <span class="keyword">var</span> anchorOffset = selection.anchorOffset;
+  <span class="keyword">var</span> focusNode = selection.focusNode;
+  <span class="keyword">var</span> focusOffset = selection.focusOffset;
+
+  <span class="keyword">var</span> currentRange = selection.getRangeAt(<span class="number">0</span>);
+
+  <span class="comment">// In Firefox, range.startContainer and range.endContainer can be "anonymous</span>
+  <span class="comment">// divs", e.g. the up/down buttons on an &lt;input type="number">. Anonymous</span>
+  <span class="comment">// divs do not seem to expose properties, triggering a "Permission denied</span>
+  <span class="comment">// error" if any of its properties are accessed. The only seemingly possible</span>
+  <span class="comment">// way to avoid erroring is to access a property that typically works for</span>
+  <span class="comment">// non-anonymous divs and catch any error that may otherwise arise. See</span>
+  <span class="comment">// https://bugzilla.mozilla.org/show_bug.cgi?id=208427</span>
+  <span class="keyword">try</span> {
+    <span class="comment">/* eslint-disable no-unused-expressions */</span>
+    currentRange.startContainer.nodeType;
+    currentRange.endContainer.nodeType;
+    <span class="comment">/* eslint-enable no-unused-expressions */</span>
+  } <span class="keyword">catch</span> (e) {
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+
+  <span class="comment">// If the node and offset values are the same, the selection is collapsed.</span>
+  <span class="comment">// `Selection.isCollapsed` is available natively, but IE sometimes gets</span>
+  <span class="comment">// this value wrong.</span>
+  <span class="keyword">var</span> isSelectionCollapsed = isCollapsed(selection.anchorNode, selection.anchorOffset, selection.focusNode, selection.focusOffset);
+
+  <span class="keyword">var</span> rangeLength = isSelectionCollapsed ? <span class="number">0</span> : currentRange.toString().length;
+
+  <span class="keyword">var</span> tempRange = currentRange.cloneRange();
+  tempRange.selectNodeContents(node);
+  tempRange.setEnd(currentRange.startContainer, currentRange.startOffset);
+
+  <span class="keyword">var</span> isTempRangeCollapsed = isCollapsed(tempRange.startContainer, tempRange.startOffset, tempRange.endContainer, tempRange.endOffset);
+
+  <span class="keyword">var</span> start = isTempRangeCollapsed ? <span class="number">0</span> : tempRange.toString().length;
+  <span class="keyword">var</span> end = start + rangeLength;
+
+  <span class="comment">// Detect whether the selection is backward.</span>
+  <span class="keyword">var</span> detectionRange = document.createRange();
+  detectionRange.setStart(anchorNode, anchorOffset);
+  detectionRange.setEnd(focusNode, focusOffset);
+  <span class="keyword">var</span> isBackward = detectionRange.collapsed;
+
+  <span class="keyword">return</span> {
+    start: isBackward ? end : start,
+    end: isBackward ? start : end
+  };
+}
+
+<span class="comment">/**
+ * @param {DOMElement|DOMTextNode} node
+ * @param {object} offsets
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">setIEOffsets</span><span class="params">(node, offsets)</span> {</span>
+  <span class="keyword">var</span> range = document.selection.createRange().duplicate();
+  <span class="keyword">var</span> start, end;
+
+  <span class="keyword">if</span> (<span class="keyword">typeof</span> offsets.end === <span class="string">'undefined'</span>) {
+    start = offsets.start;
+    end = start;
+  } <span class="keyword">else</span> <span class="keyword">if</span> (offsets.start > offsets.end) {
+    start = offsets.end;
+    end = offsets.start;
+  } <span class="keyword">else</span> {
+    start = offsets.start;
+    end = offsets.end;
+  }
+
+  range.moveToElementText(node);
+  range.moveStart(<span class="string">'character'</span>, start);
+  range.setEndPoint(<span class="string">'EndToStart'</span>, range);
+  range.moveEnd(<span class="string">'character'</span>, end - start);
+  range.select();
+}
+
+<span class="comment">/**
+ * In modern non-IE browsers, we can support both forward and backward
+ * selections.
+ *
+ * Note: IE10+ supports the Selection object, but it does not support
+ * the `extend` method, which means that even in modern IE, it's not possible
+ * to programatically create a backward selection. Thus, for all IE
+ * versions, we use the old IE API to create our selections.
+ *
+ * @param {DOMElement|DOMTextNode} node
+ * @param {object} offsets
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">setModernOffsets</span><span class="params">(node, offsets)</span> {</span>
+  <span class="keyword">if</span> (!window.getSelection) {
+    <span class="keyword">return</span>;
+  }
+
+  <span class="keyword">var</span> selection = window.getSelection();
+  <span class="keyword">var</span> length = node[getTextContentAccessor()].length;
+  <span class="keyword">var</span> start = Math.min(offsets.start, length);
+  <span class="keyword">var</span> end = <span class="keyword">typeof</span> offsets.end === <span class="string">'undefined'</span> ? start : Math.min(offsets.end, length);
+
+  <span class="comment">// IE 11 uses modern selection, but doesn't support the extend method.</span>
+  <span class="comment">// Flip backward selections, so we can set with a single range.</span>
+  <span class="keyword">if</span> (!selection.extend &amp;&amp; start > end) {
+    <span class="keyword">var</span> temp = end;
+    end = start;
+    start = temp;
+  }
+
+  <span class="keyword">var</span> startMarker = getNodeForCharacterOffset(node, start);
+  <span class="keyword">var</span> endMarker = getNodeForCharacterOffset(node, end);
+
+  <span class="keyword">if</span> (startMarker &amp;&amp; endMarker) {
+    <span class="keyword">var</span> range = document.createRange();
+    range.setStart(startMarker.node, startMarker.offset);
+    selection.removeAllRanges();
+
+    <span class="keyword">if</span> (start > end) {
+      selection.addRange(range);
+      selection.extend(endMarker.node, endMarker.offset);
+    } <span class="keyword">else</span> {
+      range.setEnd(endMarker.node, endMarker.offset);
+      selection.addRange(range);
+    }
+  }
+}
+
+<span class="keyword">var</span> useIEOffsets = ExecutionEnvironment.canUseDOM &amp;&amp; <span class="string">'selection'</span> <span class="keyword">in</span> document &amp;&amp; !(<span class="string">'getSelection'</span> <span class="keyword">in</span> window);
+
+<span class="keyword">var</span> ReactDOMSelection = {
+  <span class="comment">/**
+   * @param {DOMElement} node
+   */</span>
+  getOffsets: useIEOffsets ? getIEOffsets : getModernOffsets,
+
+  <span class="comment">/**
+   * @param {DOMElement|DOMTextNode} node
+   * @param {object} offsets
+   */</span>
+  setOffsets: useIEOffsets ? setIEOffsets : setModernOffsets
+};
+
+module.exports = ReactDOMSelection;</code></pre>

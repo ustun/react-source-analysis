@@ -1,0 +1,504 @@
+<h1>ReactMultiChild.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactMultiChild
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactComponentEnvironment = require(<span class="string">'./ReactComponentEnvironment'</span>);
+<span class="keyword">var</span> ReactMultiChildUpdateTypes = require(<span class="string">'./ReactMultiChildUpdateTypes'</span>);
+
+<span class="keyword">var</span> ReactCurrentOwner = require(<span class="string">'./ReactCurrentOwner'</span>);
+<span class="keyword">var</span> ReactReconciler = require(<span class="string">'./ReactReconciler'</span>);
+<span class="keyword">var</span> ReactChildReconciler = require(<span class="string">'./ReactChildReconciler'</span>);
+
+<span class="keyword">var</span> flattenChildren = require(<span class="string">'./flattenChildren'</span>);
+
+<span class="comment">/**
+ * Updating children of a component may trigger recursive updates. The depth is
+ * used to batch recursive updates to render markup more efficiently.
+ *
+ * @type {number}
+ * @private
+ */</span>
+<span class="keyword">var</span> updateDepth = <span class="number">0</span>;
+
+<span class="comment">/**
+ * Queue of update configuration objects.
+ *
+ * Each object has a `type` property that is in `ReactMultiChildUpdateTypes`.
+ *
+ * @type {array&lt;object>}
+ * @private
+ */</span>
+<span class="keyword">var</span> updateQueue = [];
+
+<span class="comment">/**
+ * Queue of markup to be rendered.
+ *
+ * @type {array&lt;string>}
+ * @private
+ */</span>
+<span class="keyword">var</span> markupQueue = [];
+
+<span class="comment">/**
+ * Enqueues markup to be rendered and inserted at a supplied index.
+ *
+ * @param {object} parentInst parent component.
+ * @param {string} markup Markup that renders into an element.
+ * @param {number} toIndex Destination index.
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">enqueueInsertMarkup</span><span class="params">(parentInst, markup, toIndex)</span> {</span>
+  <span class="comment">// NOTE: Null values reduce hidden classes.</span>
+  updateQueue.push({
+    parentInst: parentInst,
+    parentNode: <span class="literal">null</span>,
+    type: ReactMultiChildUpdateTypes.INSERT_MARKUP,
+    markupIndex: markupQueue.push(markup) - <span class="number">1</span>,
+    content: <span class="literal">null</span>,
+    fromIndex: <span class="literal">null</span>,
+    toIndex: toIndex
+  });
+}
+
+<span class="comment">/**
+ * Enqueues moving an existing element to another index.
+ *
+ * @param {object} parentInst parent component.
+ * @param {number} fromIndex Source index of the existing element.
+ * @param {number} toIndex Destination index of the element.
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">enqueueMove</span><span class="params">(parentInst, fromIndex, toIndex)</span> {</span>
+  <span class="comment">// NOTE: Null values reduce hidden classes.</span>
+  updateQueue.push({
+    parentInst: parentInst,
+    parentNode: <span class="literal">null</span>,
+    type: ReactMultiChildUpdateTypes.MOVE_EXISTING,
+    markupIndex: <span class="literal">null</span>,
+    content: <span class="literal">null</span>,
+    fromIndex: fromIndex,
+    toIndex: toIndex
+  });
+}
+
+<span class="comment">/**
+ * Enqueues removing an element at an index.
+ *
+ * @param {object} parentInst parent component.
+ * @param {number} fromIndex Index of the element to remove.
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">enqueueRemove</span><span class="params">(parentInst, fromIndex)</span> {</span>
+  <span class="comment">// NOTE: Null values reduce hidden classes.</span>
+  updateQueue.push({
+    parentInst: parentInst,
+    parentNode: <span class="literal">null</span>,
+    type: ReactMultiChildUpdateTypes.REMOVE_NODE,
+    markupIndex: <span class="literal">null</span>,
+    content: <span class="literal">null</span>,
+    fromIndex: fromIndex,
+    toIndex: <span class="literal">null</span>
+  });
+}
+
+<span class="comment">/**
+ * Enqueues setting the markup of a node.
+ *
+ * @param {object} parentInst parent component.
+ * @param {string} markup Markup that renders into an element.
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">enqueueSetMarkup</span><span class="params">(parentInst, markup)</span> {</span>
+  <span class="comment">// NOTE: Null values reduce hidden classes.</span>
+  updateQueue.push({
+    parentInst: parentInst,
+    parentNode: <span class="literal">null</span>,
+    type: ReactMultiChildUpdateTypes.SET_MARKUP,
+    markupIndex: <span class="literal">null</span>,
+    content: markup,
+    fromIndex: <span class="literal">null</span>,
+    toIndex: <span class="literal">null</span>
+  });
+}
+
+<span class="comment">/**
+ * Enqueues setting the text content.
+ *
+ * @param {object} parentInst parent component.
+ * @param {string} textContent Text content to set.
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">enqueueTextContent</span><span class="params">(parentInst, textContent)</span> {</span>
+  <span class="comment">// NOTE: Null values reduce hidden classes.</span>
+  updateQueue.push({
+    parentInst: parentInst,
+    parentNode: <span class="literal">null</span>,
+    type: ReactMultiChildUpdateTypes.TEXT_CONTENT,
+    markupIndex: <span class="literal">null</span>,
+    content: textContent,
+    fromIndex: <span class="literal">null</span>,
+    toIndex: <span class="literal">null</span>
+  });
+}
+
+<span class="comment">/**
+ * Processes any enqueued updates.
+ *
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">processQueue</span><span class="params">()</span> {</span>
+  <span class="keyword">if</span> (updateQueue.length) {
+    ReactComponentEnvironment.processChildrenUpdates(updateQueue, markupQueue);
+    clearQueue();
+  }
+}
+
+<span class="comment">/**
+ * Clears any enqueued updates.
+ *
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">clearQueue</span><span class="params">()</span> {</span>
+  updateQueue.length = <span class="number">0</span>;
+  markupQueue.length = <span class="number">0</span>;
+}
+
+<span class="comment">/**
+ * ReactMultiChild are capable of reconciling multiple children.
+ *
+ * @class ReactMultiChild
+ * @internal
+ */</span>
+<span class="keyword">var</span> ReactMultiChild = {
+
+  <span class="comment">/**
+   * Provides common functionality for components that must reconcile multiple
+   * children. This is used by `ReactDOMComponent` to mount, update, and
+   * unmount child components.
+   *
+   * @lends {ReactMultiChild.prototype}
+   */</span>
+  Mixin: {
+
+    _reconcilerInstantiateChildren: <span class="function"><span class="keyword">function</span> <span class="params">(nestedChildren, transaction, context)</span> {</span>
+      <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+        <span class="keyword">if</span> (<span class="keyword">this</span>._currentElement) {
+          <span class="keyword">try</span> {
+            ReactCurrentOwner.current = <span class="keyword">this</span>._currentElement._owner;
+            <span class="keyword">return</span> ReactChildReconciler.instantiateChildren(nestedChildren, transaction, context);
+          } <span class="keyword">finally</span> {
+            ReactCurrentOwner.current = <span class="literal">null</span>;
+          }
+        }
+      }
+      <span class="keyword">return</span> ReactChildReconciler.instantiateChildren(nestedChildren, transaction, context);
+    },
+
+    _reconcilerUpdateChildren: <span class="function"><span class="keyword">function</span> <span class="params">(prevChildren, nextNestedChildrenElements, transaction, context)</span> {</span>
+      <span class="keyword">var</span> nextChildren;
+      <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+        <span class="keyword">if</span> (<span class="keyword">this</span>._currentElement) {
+          <span class="keyword">try</span> {
+            ReactCurrentOwner.current = <span class="keyword">this</span>._currentElement._owner;
+            nextChildren = flattenChildren(nextNestedChildrenElements);
+          } <span class="keyword">finally</span> {
+            ReactCurrentOwner.current = <span class="literal">null</span>;
+          }
+          <span class="keyword">return</span> ReactChildReconciler.updateChildren(prevChildren, nextChildren, transaction, context);
+        }
+      }
+      nextChildren = flattenChildren(nextNestedChildrenElements);
+      <span class="keyword">return</span> ReactChildReconciler.updateChildren(prevChildren, nextChildren, transaction, context);
+    },
+
+    <span class="comment">/**
+     * Generates a "mount image" for each of the supplied children. In the case
+     * of `ReactDOMComponent`, a mount image is a string of markup.
+     *
+     * @param {?object} nestedChildren Nested child maps.
+     * @return {array} An array of mounted representations.
+     * @internal
+     */</span>
+    mountChildren: <span class="function"><span class="keyword">function</span> <span class="params">(nestedChildren, transaction, context)</span> {</span>
+      <span class="keyword">var</span> children = <span class="keyword">this</span>._reconcilerInstantiateChildren(nestedChildren, transaction, context);
+      <span class="keyword">this</span>._renderedChildren = children;
+      <span class="keyword">var</span> mountImages = [];
+      <span class="keyword">var</span> index = <span class="number">0</span>;
+      <span class="keyword">for</span> (<span class="keyword">var</span> name <span class="keyword">in</span> children) {
+        <span class="keyword">if</span> (children.hasOwnProperty(name)) {
+          <span class="keyword">var</span> child = children[name];
+          <span class="keyword">var</span> mountImage = ReactReconciler.mountComponent(child, transaction, <span class="keyword">this</span>, <span class="keyword">this</span>._nativeContainerInfo, context);
+          child._mountIndex = index++;
+          mountImages.push(mountImage);
+        }
+      }
+      <span class="keyword">return</span> mountImages;
+    },
+
+    <span class="comment">/**
+     * Replaces any rendered children with a text content string.
+     *
+     * @param {string} nextContent String of content.
+     * @internal
+     */</span>
+    updateTextContent: <span class="function"><span class="keyword">function</span> <span class="params">(nextContent)</span> {</span>
+      updateDepth++;
+      <span class="keyword">var</span> errorThrown = <span class="literal">true</span>;
+      <span class="keyword">try</span> {
+        <span class="keyword">var</span> prevChildren = <span class="keyword">this</span>._renderedChildren;
+        <span class="comment">// Remove any rendered children.</span>
+        ReactChildReconciler.unmountChildren(prevChildren);
+        <span class="comment">// TODO: The setTextContent operation should be enough</span>
+        <span class="keyword">for</span> (<span class="keyword">var</span> name <span class="keyword">in</span> prevChildren) {
+          <span class="keyword">if</span> (prevChildren.hasOwnProperty(name)) {
+            <span class="keyword">this</span>._unmountChild(prevChildren[name]);
+          }
+        }
+        <span class="comment">// Set new text content.</span>
+        <span class="keyword">this</span>.setTextContent(nextContent);
+        errorThrown = <span class="literal">false</span>;
+      } <span class="keyword">finally</span> {
+        updateDepth--;
+        <span class="keyword">if</span> (!updateDepth) {
+          <span class="keyword">if</span> (errorThrown) {
+            clearQueue();
+          } <span class="keyword">else</span> {
+            processQueue();
+          }
+        }
+      }
+    },
+
+    <span class="comment">/**
+     * Replaces any rendered children with a markup string.
+     *
+     * @param {string} nextMarkup String of markup.
+     * @internal
+     */</span>
+    updateMarkup: <span class="function"><span class="keyword">function</span> <span class="params">(nextMarkup)</span> {</span>
+      updateDepth++;
+      <span class="keyword">var</span> errorThrown = <span class="literal">true</span>;
+      <span class="keyword">try</span> {
+        <span class="keyword">var</span> prevChildren = <span class="keyword">this</span>._renderedChildren;
+        <span class="comment">// Remove any rendered children.</span>
+        ReactChildReconciler.unmountChildren(prevChildren);
+        <span class="keyword">for</span> (<span class="keyword">var</span> name <span class="keyword">in</span> prevChildren) {
+          <span class="keyword">if</span> (prevChildren.hasOwnProperty(name)) {
+            <span class="keyword">this</span>._unmountChild(prevChildren[name]);
+          }
+        }
+        <span class="keyword">this</span>.setMarkup(nextMarkup);
+        errorThrown = <span class="literal">false</span>;
+      } <span class="keyword">finally</span> {
+        updateDepth--;
+        <span class="keyword">if</span> (!updateDepth) {
+          <span class="keyword">if</span> (errorThrown) {
+            clearQueue();
+          } <span class="keyword">else</span> {
+            processQueue();
+          }
+        }
+      }
+    },
+
+    <span class="comment">/**
+     * Updates the rendered children with new children.
+     *
+     * @param {?object} nextNestedChildrenElements Nested child element maps.
+     * @param {ReactReconcileTransaction} transaction
+     * @internal
+     */</span>
+    updateChildren: <span class="function"><span class="keyword">function</span> <span class="params">(nextNestedChildrenElements, transaction, context)</span> {</span>
+      updateDepth++;
+      <span class="keyword">var</span> errorThrown = <span class="literal">true</span>;
+      <span class="keyword">try</span> {
+        <span class="keyword">this</span>._updateChildren(nextNestedChildrenElements, transaction, context);
+        errorThrown = <span class="literal">false</span>;
+      } <span class="keyword">finally</span> {
+        updateDepth--;
+        <span class="keyword">if</span> (!updateDepth) {
+          <span class="keyword">if</span> (errorThrown) {
+            clearQueue();
+          } <span class="keyword">else</span> {
+            processQueue();
+          }
+        }
+      }
+    },
+
+    <span class="comment">/**
+     * Improve performance by isolating this hot code path from the try/catch
+     * block in `updateChildren`.
+     *
+     * @param {?object} nextNestedChildrenElements Nested child element maps.
+     * @param {ReactReconcileTransaction} transaction
+     * @final
+     * @protected
+     */</span>
+    _updateChildren: <span class="function"><span class="keyword">function</span> <span class="params">(nextNestedChildrenElements, transaction, context)</span> {</span>
+      <span class="keyword">var</span> prevChildren = <span class="keyword">this</span>._renderedChildren;
+      <span class="keyword">var</span> nextChildren = <span class="keyword">this</span>._reconcilerUpdateChildren(prevChildren, nextNestedChildrenElements, transaction, context);
+      <span class="keyword">if</span> (!nextChildren &amp;&amp; !prevChildren) {
+        <span class="keyword">return</span>;
+      }
+      <span class="keyword">var</span> name;
+      <span class="comment">// `nextIndex` will increment for each child in `nextChildren`, but</span>
+      <span class="comment">// `lastIndex` will be the last index visited in `prevChildren`.</span>
+      <span class="keyword">var</span> lastIndex = <span class="number">0</span>;
+      <span class="keyword">var</span> nextIndex = <span class="number">0</span>;
+      <span class="keyword">for</span> (name <span class="keyword">in</span> nextChildren) {
+        <span class="keyword">if</span> (!nextChildren.hasOwnProperty(name)) {
+          <span class="keyword">continue</span>;
+        }
+        <span class="keyword">var</span> prevChild = prevChildren &amp;&amp; prevChildren[name];
+        <span class="keyword">var</span> nextChild = nextChildren[name];
+        <span class="keyword">if</span> (prevChild === nextChild) {
+          <span class="keyword">this</span>.moveChild(prevChild, nextIndex, lastIndex);
+          lastIndex = Math.max(prevChild._mountIndex, lastIndex);
+          prevChild._mountIndex = nextIndex;
+        } <span class="keyword">else</span> {
+          <span class="keyword">if</span> (prevChild) {
+            <span class="comment">// Update `lastIndex` before `_mountIndex` gets unset by unmounting.</span>
+            lastIndex = Math.max(prevChild._mountIndex, lastIndex);
+            <span class="keyword">this</span>._unmountChild(prevChild);
+          }
+          <span class="comment">// The child must be instantiated before it's mounted.</span>
+          <span class="keyword">this</span>._mountChildAtIndex(nextChild, nextIndex, transaction, context);
+        }
+        nextIndex++;
+      }
+      <span class="comment">// Remove children that are no longer present.</span>
+      <span class="keyword">for</span> (name <span class="keyword">in</span> prevChildren) {
+        <span class="keyword">if</span> (prevChildren.hasOwnProperty(name) &amp;&amp; !(nextChildren &amp;&amp; nextChildren.hasOwnProperty(name))) {
+          <span class="keyword">this</span>._unmountChild(prevChildren[name]);
+        }
+      }
+      <span class="keyword">this</span>._renderedChildren = nextChildren;
+    },
+
+    <span class="comment">/**
+     * Unmounts all rendered children. This should be used to clean up children
+     * when this component is unmounted.
+     *
+     * @internal
+     */</span>
+    unmountChildren: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+      <span class="keyword">var</span> renderedChildren = <span class="keyword">this</span>._renderedChildren;
+      ReactChildReconciler.unmountChildren(renderedChildren);
+      <span class="keyword">this</span>._renderedChildren = <span class="literal">null</span>;
+    },
+
+    <span class="comment">/**
+     * Hook used by the DOM implementation to precache the nodes before we apply
+     * any reorders here.
+     */</span>
+    prepareToManageChildren: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+      <span class="comment">// TODO: This sucks. Figure out a better design here.</span>
+    },
+
+    <span class="comment">/**
+     * Moves a child component to the supplied index.
+     *
+     * @param {ReactComponent} child Component to move.
+     * @param {number} toIndex Destination index of the element.
+     * @param {number} lastIndex Last index visited of the siblings of `child`.
+     * @protected
+     */</span>
+    moveChild: <span class="function"><span class="keyword">function</span> <span class="params">(child, toIndex, lastIndex)</span> {</span>
+      <span class="comment">// If the index of `child` is less than `lastIndex`, then it needs to</span>
+      <span class="comment">// be moved. Otherwise, we do not need to move it because a child will be</span>
+      <span class="comment">// inserted or moved before `child`.</span>
+      <span class="keyword">if</span> (child._mountIndex &lt; lastIndex) {
+        <span class="keyword">this</span>.prepareToManageChildren();
+        enqueueMove(<span class="keyword">this</span>, child._mountIndex, toIndex);
+      }
+    },
+
+    <span class="comment">/**
+     * Creates a child component.
+     *
+     * @param {ReactComponent} child Component to create.
+     * @param {string} mountImage Markup to insert.
+     * @protected
+     */</span>
+    createChild: <span class="function"><span class="keyword">function</span> <span class="params">(child, mountImage)</span> {</span>
+      <span class="keyword">this</span>.prepareToManageChildren();
+      enqueueInsertMarkup(<span class="keyword">this</span>, mountImage, child._mountIndex);
+    },
+
+    <span class="comment">/**
+     * Removes a child component.
+     *
+     * @param {ReactComponent} child Child to remove.
+     * @protected
+     */</span>
+    removeChild: <span class="function"><span class="keyword">function</span> <span class="params">(child)</span> {</span>
+      <span class="keyword">this</span>.prepareToManageChildren();
+      enqueueRemove(<span class="keyword">this</span>, child._mountIndex);
+    },
+
+    <span class="comment">/**
+     * Sets this text content string.
+     *
+     * @param {string} textContent Text content to set.
+     * @protected
+     */</span>
+    setTextContent: <span class="function"><span class="keyword">function</span> <span class="params">(textContent)</span> {</span>
+      enqueueTextContent(<span class="keyword">this</span>, textContent);
+    },
+
+    <span class="comment">/**
+     * Sets this markup string.
+     *
+     * @param {string} markup Markup to set.
+     * @protected
+     */</span>
+    setMarkup: <span class="function"><span class="keyword">function</span> <span class="params">(markup)</span> {</span>
+      enqueueSetMarkup(<span class="keyword">this</span>, markup);
+    },
+
+    <span class="comment">/**
+     * Mounts a child with the supplied name.
+     *
+     * NOTE: This is part of `updateChildren` and is here for readability.
+     *
+     * @param {ReactComponent} child Component to mount.
+     * @param {string} name Name of the child.
+     * @param {number} index Index at which to insert the child.
+     * @param {ReactReconcileTransaction} transaction
+     * @private
+     */</span>
+    _mountChildAtIndex: <span class="function"><span class="keyword">function</span> <span class="params">(child, index, transaction, context)</span> {</span>
+      <span class="keyword">var</span> mountImage = ReactReconciler.mountComponent(child, transaction, <span class="keyword">this</span>, <span class="keyword">this</span>._nativeContainerInfo, context);
+      child._mountIndex = index;
+      <span class="keyword">this</span>.createChild(child, mountImage);
+    },
+
+    <span class="comment">/**
+     * Unmounts a rendered child.
+     *
+     * NOTE: This is part of `updateChildren` and is here for readability.
+     *
+     * @param {ReactComponent} child Component to unmount.
+     * @private
+     */</span>
+    _unmountChild: <span class="function"><span class="keyword">function</span> <span class="params">(child)</span> {</span>
+      <span class="keyword">this</span>.removeChild(child);
+      child._mountIndex = <span class="literal">null</span>;
+    }
+
+  }
+
+};
+
+module.exports = ReactMultiChild;</code></pre>

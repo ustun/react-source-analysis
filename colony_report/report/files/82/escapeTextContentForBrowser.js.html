@@ -1,0 +1,39 @@
+<h1>escapeTextContentForBrowser.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule escapeTextContentForBrowser
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ESCAPE_LOOKUP = {
+  <span class="string">'&amp;'</span>: <span class="string">'&amp;amp;'</span>,
+  <span class="string">'>'</span>: <span class="string">'&amp;gt;'</span>,
+  <span class="string">'&lt;'</span>: <span class="string">'&amp;lt;'</span>,
+  <span class="string">'"'</span>: <span class="string">'&amp;quot;'</span>,
+  <span class="string">'\''</span>: <span class="string">'&amp;#x27;'</span>
+};
+
+<span class="keyword">var</span> ESCAPE_REGEX = <span class="regexp">/[&amp;>&lt;"']/g</span>;
+
+<span class="function"><span class="keyword">function</span> <span class="title">escaper</span><span class="params">(match)</span> {</span>
+  <span class="keyword">return</span> ESCAPE_LOOKUP[match];
+}
+
+<span class="comment">/**
+ * Escapes text to prevent scripting attacks.
+ *
+ * @param {*} text Text value to escape.
+ * @return {string} An escaped string.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">escapeTextContentForBrowser</span><span class="params">(text)</span> {</span>
+  <span class="keyword">return</span> (<span class="string">''</span> + text).replace(ESCAPE_REGEX, escaper);
+}
+
+module.exports = escapeTextContentForBrowser;</code></pre>

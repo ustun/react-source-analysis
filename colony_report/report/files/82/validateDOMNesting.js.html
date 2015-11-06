@@ -1,0 +1,360 @@
+<h1>validateDOMNesting.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule validateDOMNesting
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> emptyFunction = require(<span class="string">'fbjs/lib/emptyFunction'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="keyword">var</span> validateDOMNesting = emptyFunction;
+
+<span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+  <span class="comment">// This validation code was written based on the HTML5 parsing spec:</span>
+  <span class="comment">// https://html.spec.whatwg.org/multipage/syntax.html#has-an-element-in-scope</span>
+  <span class="comment">//</span>
+  <span class="comment">// Note: this does not catch all invalid nesting, nor does it try to (as it's</span>
+  <span class="comment">// not clear what practical benefit doing so provides); instead, we warn only</span>
+  <span class="comment">// for cases where the parser will give a parse tree differing from what React</span>
+  <span class="comment">// intended. For example, &lt;b>&lt;div>&lt;/div>&lt;/b> is invalid but we don't warn</span>
+  <span class="comment">// because it still parses correctly; we do warn for other cases like nested</span>
+  <span class="comment">// &lt;p> tags where the beginning of the second element implicitly closes the</span>
+  <span class="comment">// first, causing a confusing mess.</span>
+
+  <span class="comment">// https://html.spec.whatwg.org/multipage/syntax.html#special</span>
+  <span class="keyword">var</span> specialTags = [<span class="string">'address'</span>, <span class="string">'applet'</span>, <span class="string">'area'</span>, <span class="string">'article'</span>, <span class="string">'aside'</span>, <span class="string">'base'</span>, <span class="string">'basefont'</span>, <span class="string">'bgsound'</span>, <span class="string">'blockquote'</span>, <span class="string">'body'</span>, <span class="string">'br'</span>, <span class="string">'button'</span>, <span class="string">'caption'</span>, <span class="string">'center'</span>, <span class="string">'col'</span>, <span class="string">'colgroup'</span>, <span class="string">'dd'</span>, <span class="string">'details'</span>, <span class="string">'dir'</span>, <span class="string">'div'</span>, <span class="string">'dl'</span>, <span class="string">'dt'</span>, <span class="string">'embed'</span>, <span class="string">'fieldset'</span>, <span class="string">'figcaption'</span>, <span class="string">'figure'</span>, <span class="string">'footer'</span>, <span class="string">'form'</span>, <span class="string">'frame'</span>, <span class="string">'frameset'</span>, <span class="string">'h1'</span>, <span class="string">'h2'</span>, <span class="string">'h3'</span>, <span class="string">'h4'</span>, <span class="string">'h5'</span>, <span class="string">'h6'</span>, <span class="string">'head'</span>, <span class="string">'header'</span>, <span class="string">'hgroup'</span>, <span class="string">'hr'</span>, <span class="string">'html'</span>, <span class="string">'iframe'</span>, <span class="string">'img'</span>, <span class="string">'input'</span>, <span class="string">'isindex'</span>, <span class="string">'li'</span>, <span class="string">'link'</span>, <span class="string">'listing'</span>, <span class="string">'main'</span>, <span class="string">'marquee'</span>, <span class="string">'menu'</span>, <span class="string">'menuitem'</span>, <span class="string">'meta'</span>, <span class="string">'nav'</span>, <span class="string">'noembed'</span>, <span class="string">'noframes'</span>, <span class="string">'noscript'</span>, <span class="string">'object'</span>, <span class="string">'ol'</span>, <span class="string">'p'</span>, <span class="string">'param'</span>, <span class="string">'plaintext'</span>, <span class="string">'pre'</span>, <span class="string">'script'</span>, <span class="string">'section'</span>, <span class="string">'select'</span>, <span class="string">'source'</span>, <span class="string">'style'</span>, <span class="string">'summary'</span>, <span class="string">'table'</span>, <span class="string">'tbody'</span>, <span class="string">'td'</span>, <span class="string">'template'</span>, <span class="string">'textarea'</span>, <span class="string">'tfoot'</span>, <span class="string">'th'</span>, <span class="string">'thead'</span>, <span class="string">'title'</span>, <span class="string">'tr'</span>, <span class="string">'track'</span>, <span class="string">'ul'</span>, <span class="string">'wbr'</span>, <span class="string">'xmp'</span>];
+
+  <span class="comment">// https://html.spec.whatwg.org/multipage/syntax.html#has-an-element-in-scope</span>
+  <span class="keyword">var</span> inScopeTags = [<span class="string">'applet'</span>, <span class="string">'caption'</span>, <span class="string">'html'</span>, <span class="string">'table'</span>, <span class="string">'td'</span>, <span class="string">'th'</span>, <span class="string">'marquee'</span>, <span class="string">'object'</span>, <span class="string">'template'</span>,
+
+  <span class="comment">// https://html.spec.whatwg.org/multipage/syntax.html#html-integration-point</span>
+  <span class="comment">// TODO: Distinguish by namespace here -- for &lt;title>, including it here</span>
+  <span class="comment">// errs on the side of fewer warnings</span>
+  <span class="string">'foreignObject'</span>, <span class="string">'desc'</span>, <span class="string">'title'</span>];
+
+  <span class="comment">// https://html.spec.whatwg.org/multipage/syntax.html#has-an-element-in-button-scope</span>
+  <span class="keyword">var</span> buttonScopeTags = inScopeTags.concat([<span class="string">'button'</span>]);
+
+  <span class="comment">// https://html.spec.whatwg.org/multipage/syntax.html#generate-implied-end-tags</span>
+  <span class="keyword">var</span> impliedEndTags = [<span class="string">'dd'</span>, <span class="string">'dt'</span>, <span class="string">'li'</span>, <span class="string">'option'</span>, <span class="string">'optgroup'</span>, <span class="string">'p'</span>, <span class="string">'rp'</span>, <span class="string">'rt'</span>];
+
+  <span class="keyword">var</span> emptyAncestorInfo = {
+    current: <span class="literal">null</span>,
+
+    formTag: <span class="literal">null</span>,
+    aTagInScope: <span class="literal">null</span>,
+    buttonTagInScope: <span class="literal">null</span>,
+    nobrTagInScope: <span class="literal">null</span>,
+    pTagInButtonScope: <span class="literal">null</span>,
+
+    listItemTagAutoclosing: <span class="literal">null</span>,
+    dlItemTagAutoclosing: <span class="literal">null</span>
+  };
+
+  <span class="keyword">var</span> updatedAncestorInfo = <span class="function"><span class="keyword">function</span> <span class="params">(oldInfo, tag, instance)</span> {</span>
+    <span class="keyword">var</span> ancestorInfo = assign({}, oldInfo || emptyAncestorInfo);
+    <span class="keyword">var</span> info = { tag: tag, instance: instance };
+
+    <span class="keyword">if</span> (inScopeTags.indexOf(tag) !== -<span class="number">1</span>) {
+      ancestorInfo.aTagInScope = <span class="literal">null</span>;
+      ancestorInfo.buttonTagInScope = <span class="literal">null</span>;
+      ancestorInfo.nobrTagInScope = <span class="literal">null</span>;
+    }
+    <span class="keyword">if</span> (buttonScopeTags.indexOf(tag) !== -<span class="number">1</span>) {
+      ancestorInfo.pTagInButtonScope = <span class="literal">null</span>;
+    }
+
+    <span class="comment">// See rules for 'li', 'dd', 'dt' start tags in</span>
+    <span class="comment">// https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-inbody</span>
+    <span class="keyword">if</span> (specialTags.indexOf(tag) !== -<span class="number">1</span> &amp;&amp; tag !== <span class="string">'address'</span> &amp;&amp; tag !== <span class="string">'div'</span> &amp;&amp; tag !== <span class="string">'p'</span>) {
+      ancestorInfo.listItemTagAutoclosing = <span class="literal">null</span>;
+      ancestorInfo.dlItemTagAutoclosing = <span class="literal">null</span>;
+    }
+
+    ancestorInfo.current = info;
+
+    <span class="keyword">if</span> (tag === <span class="string">'form'</span>) {
+      ancestorInfo.formTag = info;
+    }
+    <span class="keyword">if</span> (tag === <span class="string">'a'</span>) {
+      ancestorInfo.aTagInScope = info;
+    }
+    <span class="keyword">if</span> (tag === <span class="string">'button'</span>) {
+      ancestorInfo.buttonTagInScope = info;
+    }
+    <span class="keyword">if</span> (tag === <span class="string">'nobr'</span>) {
+      ancestorInfo.nobrTagInScope = info;
+    }
+    <span class="keyword">if</span> (tag === <span class="string">'p'</span>) {
+      ancestorInfo.pTagInButtonScope = info;
+    }
+    <span class="keyword">if</span> (tag === <span class="string">'li'</span>) {
+      ancestorInfo.listItemTagAutoclosing = info;
+    }
+    <span class="keyword">if</span> (tag === <span class="string">'dd'</span> || tag === <span class="string">'dt'</span>) {
+      ancestorInfo.dlItemTagAutoclosing = info;
+    }
+
+    <span class="keyword">return</span> ancestorInfo;
+  };
+
+  <span class="comment">/**
+   * Returns whether
+   */</span>
+  <span class="keyword">var</span> isTagValidWithParent = <span class="function"><span class="keyword">function</span> <span class="params">(tag, parentTag)</span> {</span>
+    <span class="comment">// First, let's check if we're in an unusual parsing mode...</span>
+    <span class="keyword">switch</span> (parentTag) {
+      <span class="comment">// https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-inselect</span>
+      <span class="keyword">case</span> <span class="string">'select'</span>:
+        <span class="keyword">return</span> tag === <span class="string">'option'</span> || tag === <span class="string">'optgroup'</span> || tag === <span class="string">'#text'</span>;
+      <span class="keyword">case</span> <span class="string">'optgroup'</span>:
+        <span class="keyword">return</span> tag === <span class="string">'option'</span> || tag === <span class="string">'#text'</span>;
+      <span class="comment">// Strictly speaking, seeing an &lt;option> doesn't mean we're in a &lt;select></span>
+      <span class="comment">// but</span>
+      <span class="keyword">case</span> <span class="string">'option'</span>:
+        <span class="keyword">return</span> tag === <span class="string">'#text'</span>;
+
+      <span class="comment">// https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-intd</span>
+      <span class="comment">// https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-incaption</span>
+      <span class="comment">// No special behavior since these rules fall back to "in body" mode for</span>
+      <span class="comment">// all except special table nodes which cause bad parsing behavior anyway.</span>
+
+      <span class="comment">// https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-intr</span>
+      <span class="keyword">case</span> <span class="string">'tr'</span>:
+        <span class="keyword">return</span> tag === <span class="string">'th'</span> || tag === <span class="string">'td'</span> || tag === <span class="string">'style'</span> || tag === <span class="string">'script'</span> || tag === <span class="string">'template'</span>;
+
+      <span class="comment">// https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-intbody</span>
+      <span class="keyword">case</span> <span class="string">'tbody'</span>:
+      <span class="keyword">case</span> <span class="string">'thead'</span>:
+      <span class="keyword">case</span> <span class="string">'tfoot'</span>:
+        <span class="keyword">return</span> tag === <span class="string">'tr'</span> || tag === <span class="string">'style'</span> || tag === <span class="string">'script'</span> || tag === <span class="string">'template'</span>;
+
+      <span class="comment">// https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-incolgroup</span>
+      <span class="keyword">case</span> <span class="string">'colgroup'</span>:
+        <span class="keyword">return</span> tag === <span class="string">'col'</span> || tag === <span class="string">'template'</span>;
+
+      <span class="comment">// https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-intable</span>
+      <span class="keyword">case</span> <span class="string">'table'</span>:
+        <span class="keyword">return</span> tag === <span class="string">'caption'</span> || tag === <span class="string">'colgroup'</span> || tag === <span class="string">'tbody'</span> || tag === <span class="string">'tfoot'</span> || tag === <span class="string">'thead'</span> || tag === <span class="string">'style'</span> || tag === <span class="string">'script'</span> || tag === <span class="string">'template'</span>;
+
+      <span class="comment">// https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-inhead</span>
+      <span class="keyword">case</span> <span class="string">'head'</span>:
+        <span class="keyword">return</span> tag === <span class="string">'base'</span> || tag === <span class="string">'basefont'</span> || tag === <span class="string">'bgsound'</span> || tag === <span class="string">'link'</span> || tag === <span class="string">'meta'</span> || tag === <span class="string">'title'</span> || tag === <span class="string">'noscript'</span> || tag === <span class="string">'noframes'</span> || tag === <span class="string">'style'</span> || tag === <span class="string">'script'</span> || tag === <span class="string">'template'</span>;
+
+      <span class="comment">// https://html.spec.whatwg.org/multipage/semantics.html#the-html-element</span>
+      <span class="keyword">case</span> <span class="string">'html'</span>:
+        <span class="keyword">return</span> tag === <span class="string">'head'</span> || tag === <span class="string">'body'</span>;
+    }
+
+    <span class="comment">// Probably in the "in body" parsing mode, so we outlaw only tag combos</span>
+    <span class="comment">// where the parsing rules cause implicit opens or closes to be added.</span>
+    <span class="comment">// https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-inbody</span>
+    <span class="keyword">switch</span> (tag) {
+      <span class="keyword">case</span> <span class="string">'h1'</span>:
+      <span class="keyword">case</span> <span class="string">'h2'</span>:
+      <span class="keyword">case</span> <span class="string">'h3'</span>:
+      <span class="keyword">case</span> <span class="string">'h4'</span>:
+      <span class="keyword">case</span> <span class="string">'h5'</span>:
+      <span class="keyword">case</span> <span class="string">'h6'</span>:
+        <span class="keyword">return</span> parentTag !== <span class="string">'h1'</span> &amp;&amp; parentTag !== <span class="string">'h2'</span> &amp;&amp; parentTag !== <span class="string">'h3'</span> &amp;&amp; parentTag !== <span class="string">'h4'</span> &amp;&amp; parentTag !== <span class="string">'h5'</span> &amp;&amp; parentTag !== <span class="string">'h6'</span>;
+
+      <span class="keyword">case</span> <span class="string">'rp'</span>:
+      <span class="keyword">case</span> <span class="string">'rt'</span>:
+        <span class="keyword">return</span> impliedEndTags.indexOf(parentTag) === -<span class="number">1</span>;
+
+      <span class="keyword">case</span> <span class="string">'caption'</span>:
+      <span class="keyword">case</span> <span class="string">'col'</span>:
+      <span class="keyword">case</span> <span class="string">'colgroup'</span>:
+      <span class="keyword">case</span> <span class="string">'frame'</span>:
+      <span class="keyword">case</span> <span class="string">'head'</span>:
+      <span class="keyword">case</span> <span class="string">'tbody'</span>:
+      <span class="keyword">case</span> <span class="string">'td'</span>:
+      <span class="keyword">case</span> <span class="string">'tfoot'</span>:
+      <span class="keyword">case</span> <span class="string">'th'</span>:
+      <span class="keyword">case</span> <span class="string">'thead'</span>:
+      <span class="keyword">case</span> <span class="string">'tr'</span>:
+        <span class="comment">// These tags are only valid with a few parents that have special child</span>
+        <span class="comment">// parsing rules -- if we're down here, then none of those matched and</span>
+        <span class="comment">// so we allow it only if we don't know what the parent is, as all other</span>
+        <span class="comment">// cases are invalid.</span>
+        <span class="keyword">return</span> parentTag == <span class="literal">null</span>;
+    }
+
+    <span class="keyword">return</span> <span class="literal">true</span>;
+  };
+
+  <span class="comment">/**
+   * Returns whether
+   */</span>
+  <span class="keyword">var</span> findInvalidAncestorForTag = <span class="function"><span class="keyword">function</span> <span class="params">(tag, ancestorInfo)</span> {</span>
+    <span class="keyword">switch</span> (tag) {
+      <span class="keyword">case</span> <span class="string">'address'</span>:
+      <span class="keyword">case</span> <span class="string">'article'</span>:
+      <span class="keyword">case</span> <span class="string">'aside'</span>:
+      <span class="keyword">case</span> <span class="string">'blockquote'</span>:
+      <span class="keyword">case</span> <span class="string">'center'</span>:
+      <span class="keyword">case</span> <span class="string">'details'</span>:
+      <span class="keyword">case</span> <span class="string">'dialog'</span>:
+      <span class="keyword">case</span> <span class="string">'dir'</span>:
+      <span class="keyword">case</span> <span class="string">'div'</span>:
+      <span class="keyword">case</span> <span class="string">'dl'</span>:
+      <span class="keyword">case</span> <span class="string">'fieldset'</span>:
+      <span class="keyword">case</span> <span class="string">'figcaption'</span>:
+      <span class="keyword">case</span> <span class="string">'figure'</span>:
+      <span class="keyword">case</span> <span class="string">'footer'</span>:
+      <span class="keyword">case</span> <span class="string">'header'</span>:
+      <span class="keyword">case</span> <span class="string">'hgroup'</span>:
+      <span class="keyword">case</span> <span class="string">'main'</span>:
+      <span class="keyword">case</span> <span class="string">'menu'</span>:
+      <span class="keyword">case</span> <span class="string">'nav'</span>:
+      <span class="keyword">case</span> <span class="string">'ol'</span>:
+      <span class="keyword">case</span> <span class="string">'p'</span>:
+      <span class="keyword">case</span> <span class="string">'section'</span>:
+      <span class="keyword">case</span> <span class="string">'summary'</span>:
+      <span class="keyword">case</span> <span class="string">'ul'</span>:
+
+      <span class="keyword">case</span> <span class="string">'pre'</span>:
+      <span class="keyword">case</span> <span class="string">'listing'</span>:
+
+      <span class="keyword">case</span> <span class="string">'table'</span>:
+
+      <span class="keyword">case</span> <span class="string">'hr'</span>:
+
+      <span class="keyword">case</span> <span class="string">'xmp'</span>:
+
+      <span class="keyword">case</span> <span class="string">'h1'</span>:
+      <span class="keyword">case</span> <span class="string">'h2'</span>:
+      <span class="keyword">case</span> <span class="string">'h3'</span>:
+      <span class="keyword">case</span> <span class="string">'h4'</span>:
+      <span class="keyword">case</span> <span class="string">'h5'</span>:
+      <span class="keyword">case</span> <span class="string">'h6'</span>:
+        <span class="keyword">return</span> ancestorInfo.pTagInButtonScope;
+
+      <span class="keyword">case</span> <span class="string">'form'</span>:
+        <span class="keyword">return</span> ancestorInfo.formTag || ancestorInfo.pTagInButtonScope;
+
+      <span class="keyword">case</span> <span class="string">'li'</span>:
+        <span class="keyword">return</span> ancestorInfo.listItemTagAutoclosing;
+
+      <span class="keyword">case</span> <span class="string">'dd'</span>:
+      <span class="keyword">case</span> <span class="string">'dt'</span>:
+        <span class="keyword">return</span> ancestorInfo.dlItemTagAutoclosing;
+
+      <span class="keyword">case</span> <span class="string">'button'</span>:
+        <span class="keyword">return</span> ancestorInfo.buttonTagInScope;
+
+      <span class="keyword">case</span> <span class="string">'a'</span>:
+        <span class="comment">// Spec says something about storing a list of markers, but it sounds</span>
+        <span class="comment">// equivalent to this check.</span>
+        <span class="keyword">return</span> ancestorInfo.aTagInScope;
+
+      <span class="keyword">case</span> <span class="string">'nobr'</span>:
+        <span class="keyword">return</span> ancestorInfo.nobrTagInScope;
+    }
+
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  };
+
+  <span class="comment">/**
+   * Given a ReactCompositeComponent instance, return a list of its recursive
+   * owners, starting at the root and ending with the instance itself.
+   */</span>
+  <span class="keyword">var</span> findOwnerStack = <span class="function"><span class="keyword">function</span> <span class="params">(instance)</span> {</span>
+    <span class="keyword">if</span> (!instance) {
+      <span class="keyword">return</span> [];
+    }
+
+    <span class="keyword">var</span> stack = [];
+    <span class="keyword">do</span> {
+      stack.push(instance);
+    } <span class="keyword">while</span> (instance = instance._currentElement._owner);
+    stack.reverse();
+    <span class="keyword">return</span> stack;
+  };
+
+  <span class="keyword">var</span> didWarn = {};
+
+  validateDOMNesting = <span class="function"><span class="keyword">function</span> <span class="params">(childTag, childInstance, ancestorInfo)</span> {</span>
+    ancestorInfo = ancestorInfo || emptyAncestorInfo;
+    <span class="keyword">var</span> parentInfo = ancestorInfo.current;
+    <span class="keyword">var</span> parentTag = parentInfo &amp;&amp; parentInfo.tag;
+
+    <span class="keyword">var</span> invalidParent = isTagValidWithParent(childTag, parentTag) ? <span class="literal">null</span> : parentInfo;
+    <span class="keyword">var</span> invalidAncestor = invalidParent ? <span class="literal">null</span> : findInvalidAncestorForTag(childTag, ancestorInfo);
+    <span class="keyword">var</span> problematic = invalidParent || invalidAncestor;
+
+    <span class="keyword">if</span> (problematic) {
+      <span class="keyword">var</span> ancestorTag = problematic.tag;
+      <span class="keyword">var</span> ancestorInstance = problematic.instance;
+
+      <span class="keyword">var</span> childOwner = childInstance &amp;&amp; childInstance._currentElement._owner;
+      <span class="keyword">var</span> ancestorOwner = ancestorInstance &amp;&amp; ancestorInstance._currentElement._owner;
+
+      <span class="keyword">var</span> childOwners = findOwnerStack(childOwner);
+      <span class="keyword">var</span> ancestorOwners = findOwnerStack(ancestorOwner);
+
+      <span class="keyword">var</span> minStackLen = Math.min(childOwners.length, ancestorOwners.length);
+      <span class="keyword">var</span> i;
+
+      <span class="keyword">var</span> deepestCommon = -<span class="number">1</span>;
+      <span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; minStackLen; i++) {
+        <span class="keyword">if</span> (childOwners[i] === ancestorOwners[i]) {
+          deepestCommon = i;
+        } <span class="keyword">else</span> {
+          <span class="keyword">break</span>;
+        }
+      }
+
+      <span class="keyword">var</span> UNKNOWN = <span class="string">'(unknown)'</span>;
+      <span class="keyword">var</span> childOwnerNames = childOwners.slice(deepestCommon + <span class="number">1</span>).map(<span class="function"><span class="keyword">function</span> <span class="params">(inst)</span> {</span>
+        <span class="keyword">return</span> inst.getName() || UNKNOWN;
+      });
+      <span class="keyword">var</span> ancestorOwnerNames = ancestorOwners.slice(deepestCommon + <span class="number">1</span>).map(<span class="function"><span class="keyword">function</span> <span class="params">(inst)</span> {</span>
+        <span class="keyword">return</span> inst.getName() || UNKNOWN;
+      });
+      <span class="keyword">var</span> ownerInfo = [].concat(
+      <span class="comment">// If the parent and child instances have a common owner ancestor, start</span>
+      <span class="comment">// with that -- otherwise we just start with the parent's owners.</span>
+      deepestCommon !== -<span class="number">1</span> ? childOwners[deepestCommon].getName() || UNKNOWN : [], ancestorOwnerNames, ancestorTag,
+      <span class="comment">// If we're warning about an invalid (non-parent) ancestry, add '...'</span>
+      invalidAncestor ? [<span class="string">'...'</span>] : [], childOwnerNames, childTag).join(<span class="string">' > '</span>);
+
+      <span class="keyword">var</span> warnKey = !!invalidParent + <span class="string">'|'</span> + childTag + <span class="string">'|'</span> + ancestorTag + <span class="string">'|'</span> + ownerInfo;
+      <span class="keyword">if</span> (didWarn[warnKey]) {
+        <span class="keyword">return</span>;
+      }
+      didWarn[warnKey] = <span class="literal">true</span>;
+
+      <span class="keyword">if</span> (invalidParent) {
+        <span class="keyword">var</span> info = <span class="string">''</span>;
+        <span class="keyword">if</span> (ancestorTag === <span class="string">'table'</span> &amp;&amp; childTag === <span class="string">'tr'</span>) {
+          info += <span class="string">' Add a &lt;tbody> to your code to match the DOM tree generated by '</span> + <span class="string">'the browser.'</span>;
+        }
+        process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'validateDOMNesting(...): &lt;%s> cannot appear as a child of &lt;%s>. '</span> + <span class="string">'See %s.%s'</span>, childTag, ancestorTag, ownerInfo, info) : <span class="literal">undefined</span>;
+      } <span class="keyword">else</span> {
+        process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'validateDOMNesting(...): &lt;%s> cannot appear as a descendant of '</span> + <span class="string">'&lt;%s>. See %s.'</span>, childTag, ancestorTag, ownerInfo) : <span class="literal">undefined</span>;
+      }
+    }
+  };
+
+  validateDOMNesting.updatedAncestorInfo = updatedAncestorInfo;
+
+  <span class="comment">// For testing</span>
+  validateDOMNesting.isTagValidInContext = <span class="function"><span class="keyword">function</span> <span class="params">(tag, ancestorInfo)</span> {</span>
+    ancestorInfo = ancestorInfo || emptyAncestorInfo;
+    <span class="keyword">var</span> parentInfo = ancestorInfo.current;
+    <span class="keyword">var</span> parentTag = parentInfo &amp;&amp; parentInfo.tag;
+    <span class="keyword">return</span> isTagValidWithParent(tag, parentTag) &amp;&amp; !findInvalidAncestorForTag(tag, ancestorInfo);
+  };
+}
+
+module.exports = validateDOMNesting;</code></pre>

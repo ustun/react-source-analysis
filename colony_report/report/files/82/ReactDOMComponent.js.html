@@ -1,0 +1,1009 @@
+<h1>ReactDOMComponent.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDOMComponent
+ * @typechecks static-only
+ */</span>
+
+<span class="comment">/* global hasOwnProperty:true */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> AutoFocusUtils = require(<span class="string">'./AutoFocusUtils'</span>);
+<span class="keyword">var</span> CSSPropertyOperations = require(<span class="string">'./CSSPropertyOperations'</span>);
+<span class="keyword">var</span> DOMLazyTree = require(<span class="string">'./DOMLazyTree'</span>);
+<span class="keyword">var</span> DOMNamespaces = require(<span class="string">'./DOMNamespaces'</span>);
+<span class="keyword">var</span> DOMProperty = require(<span class="string">'./DOMProperty'</span>);
+<span class="keyword">var</span> DOMPropertyOperations = require(<span class="string">'./DOMPropertyOperations'</span>);
+<span class="keyword">var</span> EventConstants = require(<span class="string">'./EventConstants'</span>);
+<span class="keyword">var</span> EventPluginHub = require(<span class="string">'./EventPluginHub'</span>);
+<span class="keyword">var</span> EventPluginRegistry = require(<span class="string">'./EventPluginRegistry'</span>);
+<span class="keyword">var</span> ReactBrowserEventEmitter = require(<span class="string">'./ReactBrowserEventEmitter'</span>);
+<span class="keyword">var</span> ReactComponentBrowserEnvironment = require(<span class="string">'./ReactComponentBrowserEnvironment'</span>);
+<span class="keyword">var</span> ReactDOMButton = require(<span class="string">'./ReactDOMButton'</span>);
+<span class="keyword">var</span> ReactDOMComponentFlags = require(<span class="string">'./ReactDOMComponentFlags'</span>);
+<span class="keyword">var</span> ReactDOMComponentTree = require(<span class="string">'./ReactDOMComponentTree'</span>);
+<span class="keyword">var</span> ReactDOMInput = require(<span class="string">'./ReactDOMInput'</span>);
+<span class="keyword">var</span> ReactDOMOption = require(<span class="string">'./ReactDOMOption'</span>);
+<span class="keyword">var</span> ReactDOMSelect = require(<span class="string">'./ReactDOMSelect'</span>);
+<span class="keyword">var</span> ReactDOMTextarea = require(<span class="string">'./ReactDOMTextarea'</span>);
+<span class="keyword">var</span> ReactMultiChild = require(<span class="string">'./ReactMultiChild'</span>);
+<span class="keyword">var</span> ReactPerf = require(<span class="string">'./ReactPerf'</span>);
+<span class="keyword">var</span> ReactUpdateQueue = require(<span class="string">'./ReactUpdateQueue'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> canDefineProperty = require(<span class="string">'./canDefineProperty'</span>);
+<span class="keyword">var</span> escapeTextContentForBrowser = require(<span class="string">'./escapeTextContentForBrowser'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+<span class="keyword">var</span> isEventSupported = require(<span class="string">'./isEventSupported'</span>);
+<span class="keyword">var</span> keyOf = require(<span class="string">'fbjs/lib/keyOf'</span>);
+<span class="keyword">var</span> shallowEqual = require(<span class="string">'fbjs/lib/shallowEqual'</span>);
+<span class="keyword">var</span> validateDOMNesting = require(<span class="string">'./validateDOMNesting'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="keyword">var</span> Flags = ReactDOMComponentFlags;
+<span class="keyword">var</span> deleteListener = EventPluginHub.deleteListener;
+<span class="keyword">var</span> getNode = ReactDOMComponentTree.getNodeFromInstance;
+<span class="keyword">var</span> listenTo = ReactBrowserEventEmitter.listenTo;
+<span class="keyword">var</span> registrationNameModules = EventPluginRegistry.registrationNameModules;
+
+<span class="comment">// For quickly matching children type, to test if can be treated as content.</span>
+<span class="keyword">var</span> CONTENT_TYPES = { <span class="string">'string'</span>: <span class="literal">true</span>, <span class="string">'number'</span>: <span class="literal">true</span> };
+
+<span class="keyword">var</span> CHILDREN = keyOf({ children: <span class="literal">null</span> });
+<span class="keyword">var</span> STYLE = keyOf({ style: <span class="literal">null</span> });
+<span class="keyword">var</span> HTML = keyOf({ __html: <span class="literal">null</span> });
+
+<span class="function"><span class="keyword">function</span> <span class="title">getDeclarationErrorAddendum</span><span class="params">(internalInstance)</span> {</span>
+  <span class="keyword">if</span> (internalInstance) {
+    <span class="keyword">var</span> owner = internalInstance._currentElement._owner || <span class="literal">null</span>;
+    <span class="keyword">if</span> (owner) {
+      <span class="keyword">var</span> name = owner.getName();
+      <span class="keyword">if</span> (name) {
+        <span class="keyword">return</span> <span class="string">' This DOM node was rendered by `'</span> + name + <span class="string">'`.'</span>;
+      }
+    }
+  }
+  <span class="keyword">return</span> <span class="string">''</span>;
+}
+
+<span class="keyword">var</span> legacyPropsDescriptor;
+<span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+  legacyPropsDescriptor = {
+    props: {
+      enumerable: <span class="literal">false</span>,
+      get: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+        <span class="keyword">var</span> component = ReactDOMComponentTree.getInstanceFromNode(<span class="keyword">this</span>);
+        process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'ReactDOMComponent: Do not access .props of a DOM node; instead, '</span> + <span class="string">'recreate the props as `render` did originally or read the DOM '</span> + <span class="string">'properties/attributes directly from this node (e.g., '</span> + <span class="string">'this.refs.box.className).%s'</span>, getDeclarationErrorAddendum(component)) : <span class="literal">undefined</span>;
+        <span class="keyword">return</span> component._currentElement.props;
+      }
+    }
+  };
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">legacyGetDOMNode</span><span class="params">()</span> {</span>
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    <span class="keyword">var</span> component = ReactDOMComponentTree.getInstanceFromNode(<span class="keyword">this</span>);
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'ReactDOMComponent: Do not access .getDOMNode() of a DOM node; '</span> + <span class="string">'instead, use the node directly.%s'</span>, getDeclarationErrorAddendum(component)) : <span class="literal">undefined</span>;
+  }
+  <span class="keyword">return</span> <span class="keyword">this</span>;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">legacyIsMounted</span><span class="params">()</span> {</span>
+  <span class="keyword">var</span> component = ReactDOMComponentTree.getInstanceFromNode(<span class="keyword">this</span>);
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'ReactDOMComponent: Do not access .isMounted() of a DOM node.%s'</span>, getDeclarationErrorAddendum(component)) : <span class="literal">undefined</span>;
+  }
+  <span class="keyword">return</span> !!component;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">legacySetStateEtc</span><span class="params">()</span> {</span>
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    <span class="keyword">var</span> component = ReactDOMComponentTree.getInstanceFromNode(<span class="keyword">this</span>);
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'ReactDOMComponent: Do not access .setState(), .replaceState(), or '</span> + <span class="string">'.forceUpdate() of a DOM node. This is a no-op.%s'</span>, getDeclarationErrorAddendum(component)) : <span class="literal">undefined</span>;
+  }
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">legacySetProps</span><span class="params">(partialProps, callback)</span> {</span>
+  <span class="keyword">var</span> component = ReactDOMComponentTree.getInstanceFromNode(<span class="keyword">this</span>);
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'ReactDOMComponent: Do not access .setProps() of a DOM node. '</span> + <span class="string">'Instead, call ReactDOM.render again at the top level.%s'</span>, getDeclarationErrorAddendum(component)) : <span class="literal">undefined</span>;
+  }
+  <span class="keyword">if</span> (!component) {
+    <span class="keyword">return</span>;
+  }
+  ReactUpdateQueue.enqueueSetPropsInternal(component, partialProps);
+  <span class="keyword">if</span> (callback) {
+    ReactUpdateQueue.enqueueCallbackInternal(component, callback);
+  }
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">legacyReplaceProps</span><span class="params">(partialProps, callback)</span> {</span>
+  <span class="keyword">var</span> component = ReactDOMComponentTree.getInstanceFromNode(<span class="keyword">this</span>);
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'ReactDOMComponent: Do not access .replaceProps() of a DOM node. '</span> + <span class="string">'Instead, call ReactDOM.render again at the top level.%s'</span>, getDeclarationErrorAddendum(component)) : <span class="literal">undefined</span>;
+  }
+  <span class="keyword">if</span> (!component) {
+    <span class="keyword">return</span>;
+  }
+  ReactUpdateQueue.enqueueReplacePropsInternal(component, partialProps);
+  <span class="keyword">if</span> (callback) {
+    ReactUpdateQueue.enqueueCallbackInternal(component, callback);
+  }
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">friendlyStringify</span><span class="params">(obj)</span> {</span>
+  <span class="keyword">if</span> (<span class="keyword">typeof</span> obj === <span class="string">'object'</span>) {
+    <span class="keyword">if</span> (Array.isArray(obj)) {
+      <span class="keyword">return</span> <span class="string">'['</span> + obj.map(friendlyStringify).join(<span class="string">', '</span>) + <span class="string">']'</span>;
+    } <span class="keyword">else</span> {
+      <span class="keyword">var</span> pairs = [];
+      <span class="keyword">for</span> (<span class="keyword">var</span> key <span class="keyword">in</span> obj) {
+        <span class="keyword">if</span> (Object.prototype.hasOwnProperty.call(obj, key)) {
+          <span class="keyword">var</span> keyEscaped = <span class="regexp">/^[a-z$_][\w$_]*$/i</span>.test(key) ? key : JSON.stringify(key);
+          pairs.push(keyEscaped + <span class="string">': '</span> + friendlyStringify(obj[key]));
+        }
+      }
+      <span class="keyword">return</span> <span class="string">'{'</span> + pairs.join(<span class="string">', '</span>) + <span class="string">'}'</span>;
+    }
+  } <span class="keyword">else</span> <span class="keyword">if</span> (<span class="keyword">typeof</span> obj === <span class="string">'string'</span>) {
+    <span class="keyword">return</span> JSON.stringify(obj);
+  } <span class="keyword">else</span> <span class="keyword">if</span> (<span class="keyword">typeof</span> obj === <span class="string">'function'</span>) {
+    <span class="keyword">return</span> <span class="string">'[function object]'</span>;
+  }
+  <span class="comment">// Differs from JSON.stringify in that undefined becauses undefined and that</span>
+  <span class="comment">// inf and nan don't become null</span>
+  <span class="keyword">return</span> String(obj);
+}
+
+<span class="keyword">var</span> styleMutationWarning = {};
+
+<span class="function"><span class="keyword">function</span> <span class="title">checkAndWarnForMutatedStyle</span><span class="params">(style1, style2, component)</span> {</span>
+  <span class="keyword">if</span> (style1 == <span class="literal">null</span> || style2 == <span class="literal">null</span>) {
+    <span class="keyword">return</span>;
+  }
+  <span class="keyword">if</span> (shallowEqual(style1, style2)) {
+    <span class="keyword">return</span>;
+  }
+
+  <span class="keyword">var</span> componentName = component._tag;
+  <span class="keyword">var</span> owner = component._currentElement._owner;
+  <span class="keyword">var</span> ownerName;
+  <span class="keyword">if</span> (owner) {
+    ownerName = owner.getName();
+  }
+
+  <span class="keyword">var</span> hash = ownerName + <span class="string">'|'</span> + componentName;
+
+  <span class="keyword">if</span> (styleMutationWarning.hasOwnProperty(hash)) {
+    <span class="keyword">return</span>;
+  }
+
+  styleMutationWarning[hash] = <span class="literal">true</span>;
+
+  process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'`%s` was passed a style object that has previously been mutated. '</span> + <span class="string">'Mutating `style` is deprecated. Consider cloning it beforehand. Check '</span> + <span class="string">'the `render` %s. Previous style: %s. Mutated style: %s.'</span>, componentName, owner ? <span class="string">'of `'</span> + ownerName + <span class="string">'`'</span> : <span class="string">'using &lt;'</span> + componentName + <span class="string">'>'</span>, friendlyStringify(style1), friendlyStringify(style2)) : <span class="literal">undefined</span>;
+}
+
+<span class="comment">/**
+ * @param {object} component
+ * @param {?object} props
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">assertValidProps</span><span class="params">(component, props)</span> {</span>
+  <span class="keyword">if</span> (!props) {
+    <span class="keyword">return</span>;
+  }
+  <span class="comment">// Note the use of `==` which checks for null or undefined.</span>
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    <span class="keyword">if</span> (voidElementTags[component._tag]) {
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(props.children == <span class="literal">null</span> &amp;&amp; props.dangerouslySetInnerHTML == <span class="literal">null</span>, <span class="string">'%s is a void element tag and must not have `children` or '</span> + <span class="string">'use `props.dangerouslySetInnerHTML`.%s'</span>, component._tag, component._currentElement._owner ? <span class="string">' Check the render method of '</span> + component._currentElement._owner.getName() + <span class="string">'.'</span> : <span class="string">''</span>) : <span class="literal">undefined</span>;
+    }
+  }
+  <span class="keyword">if</span> (props.dangerouslySetInnerHTML != <span class="literal">null</span>) {
+    !(props.children == <span class="literal">null</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Can only set one of `children` or `props.dangerouslySetInnerHTML`.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    !(<span class="keyword">typeof</span> props.dangerouslySetInnerHTML === <span class="string">'object'</span> &amp;&amp; HTML <span class="keyword">in</span> props.dangerouslySetInnerHTML) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'`props.dangerouslySetInnerHTML` must be in the form `{__html: ...}`. '</span> + <span class="string">'Please visit https://fb.me/react-invariant-dangerously-set-inner-html '</span> + <span class="string">'for more information.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  }
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(props.innerHTML == <span class="literal">null</span>, <span class="string">'Directly setting property `innerHTML` is not permitted. '</span> + <span class="string">'For more information, lookup documentation on `dangerouslySetInnerHTML`.'</span>) : <span class="literal">undefined</span>;
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(!props.contentEditable || props.children == <span class="literal">null</span>, <span class="string">'A component is `contentEditable` and contains `children` managed by '</span> + <span class="string">'React. It is now your responsibility to guarantee that none of '</span> + <span class="string">'those nodes are unexpectedly modified or duplicated. This is '</span> + <span class="string">'probably not intentional.'</span>) : <span class="literal">undefined</span>;
+  }
+  !(props.style == <span class="literal">null</span> || <span class="keyword">typeof</span> props.style === <span class="string">'object'</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'The `style` prop expects a mapping from style properties to values, '</span> + <span class="string">'not a string. For example, style={{marginRight: spacing + \'em\'}} when '</span> + <span class="string">'using JSX.%s'</span>, getDeclarationErrorAddendum(component)) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">enqueuePutListener</span><span class="params">(inst, registrationName, listener, transaction)</span> {</span>
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    <span class="comment">// IE8 has no API for event capturing and the `onScroll` event doesn't</span>
+    <span class="comment">// bubble.</span>
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(registrationName !== <span class="string">'onScroll'</span> || isEventSupported(<span class="string">'scroll'</span>, <span class="literal">true</span>), <span class="string">'This browser doesn\'t support the `onScroll` event'</span>) : <span class="literal">undefined</span>;
+  }
+  <span class="keyword">var</span> containerInfo = inst._nativeContainerInfo;
+  <span class="keyword">var</span> doc = containerInfo._ownerDocument;
+  <span class="keyword">if</span> (!doc) {
+    <span class="comment">// Server rendering.</span>
+    <span class="keyword">return</span>;
+  }
+  listenTo(registrationName, doc);
+  transaction.getReactMountReady().enqueue(putListener, {
+    inst: inst,
+    registrationName: registrationName,
+    listener: listener
+  });
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">putListener</span><span class="params">()</span> {</span>
+  <span class="keyword">var</span> listenerToPut = <span class="keyword">this</span>;
+  EventPluginHub.putListener(listenerToPut.inst, listenerToPut.registrationName, listenerToPut.listener);
+}
+
+<span class="comment">// There are so many media events, it makes sense to just</span>
+<span class="comment">// maintain a list rather than create a `trapBubbledEvent` for each</span>
+<span class="keyword">var</span> mediaEvents = {
+  topAbort: <span class="string">'abort'</span>,
+  topCanPlay: <span class="string">'canplay'</span>,
+  topCanPlayThrough: <span class="string">'canplaythrough'</span>,
+  topDurationChange: <span class="string">'durationchange'</span>,
+  topEmptied: <span class="string">'emptied'</span>,
+  topEncrypted: <span class="string">'encrypted'</span>,
+  topEnded: <span class="string">'ended'</span>,
+  topError: <span class="string">'error'</span>,
+  topLoadedData: <span class="string">'loadeddata'</span>,
+  topLoadedMetadata: <span class="string">'loadedmetadata'</span>,
+  topLoadStart: <span class="string">'loadstart'</span>,
+  topPause: <span class="string">'pause'</span>,
+  topPlay: <span class="string">'play'</span>,
+  topPlaying: <span class="string">'playing'</span>,
+  topProgress: <span class="string">'progress'</span>,
+  topRateChange: <span class="string">'ratechange'</span>,
+  topSeeked: <span class="string">'seeked'</span>,
+  topSeeking: <span class="string">'seeking'</span>,
+  topStalled: <span class="string">'stalled'</span>,
+  topSuspend: <span class="string">'suspend'</span>,
+  topTimeUpdate: <span class="string">'timeupdate'</span>,
+  topVolumeChange: <span class="string">'volumechange'</span>,
+  topWaiting: <span class="string">'waiting'</span>
+};
+
+<span class="function"><span class="keyword">function</span> <span class="title">trapBubbledEventsLocal</span><span class="params">()</span> {</span>
+  <span class="keyword">var</span> inst = <span class="keyword">this</span>;
+  <span class="comment">// If a component renders to null or if another component fatals and causes</span>
+  <span class="comment">// the state of the tree to be corrupted, `node` here can be null.</span>
+  !inst._rootNodeID ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Must be mounted to trap events'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  <span class="keyword">var</span> node = getNode(inst);
+  !node ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'trapBubbledEvent(...): Requires node to be rendered.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+  <span class="keyword">switch</span> (inst._tag) {
+    <span class="keyword">case</span> <span class="string">'iframe'</span>:
+      inst._wrapperState.listeners = [ReactBrowserEventEmitter.trapBubbledEvent(EventConstants.topLevelTypes.topLoad, <span class="string">'load'</span>, node)];
+      <span class="keyword">break</span>;
+    <span class="keyword">case</span> <span class="string">'video'</span>:
+    <span class="keyword">case</span> <span class="string">'audio'</span>:
+
+      inst._wrapperState.listeners = [];
+      <span class="comment">// Create listener for each media event</span>
+      <span class="keyword">for</span> (<span class="keyword">var</span> event <span class="keyword">in</span> mediaEvents) {
+        <span class="keyword">if</span> (mediaEvents.hasOwnProperty(event)) {
+          inst._wrapperState.listeners.push(ReactBrowserEventEmitter.trapBubbledEvent(EventConstants.topLevelTypes[event], mediaEvents[event], node));
+        }
+      }
+
+      <span class="keyword">break</span>;
+    <span class="keyword">case</span> <span class="string">'img'</span>:
+      inst._wrapperState.listeners = [ReactBrowserEventEmitter.trapBubbledEvent(EventConstants.topLevelTypes.topError, <span class="string">'error'</span>, node), ReactBrowserEventEmitter.trapBubbledEvent(EventConstants.topLevelTypes.topLoad, <span class="string">'load'</span>, node)];
+      <span class="keyword">break</span>;
+    <span class="keyword">case</span> <span class="string">'form'</span>:
+      inst._wrapperState.listeners = [ReactBrowserEventEmitter.trapBubbledEvent(EventConstants.topLevelTypes.topReset, <span class="string">'reset'</span>, node), ReactBrowserEventEmitter.trapBubbledEvent(EventConstants.topLevelTypes.topSubmit, <span class="string">'submit'</span>, node)];
+      <span class="keyword">break</span>;
+    <span class="keyword">case</span> <span class="string">'input'</span>:
+    <span class="keyword">case</span> <span class="string">'select'</span>:
+    <span class="keyword">case</span> <span class="string">'textarea'</span>:
+      inst._wrapperState.listeners = [ReactBrowserEventEmitter.trapBubbledEvent(EventConstants.topLevelTypes.topInvalid, <span class="string">'invalid'</span>, node)];
+      <span class="keyword">break</span>;
+  }
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">mountReadyInputWrapper</span><span class="params">()</span> {</span>
+  ReactDOMInput.mountReadyWrapper(<span class="keyword">this</span>);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">postUpdateSelectWrapper</span><span class="params">()</span> {</span>
+  ReactDOMSelect.postUpdateWrapper(<span class="keyword">this</span>);
+}
+
+<span class="comment">// For HTML, certain tags should omit their close tag. We keep a whitelist for</span>
+<span class="comment">// those special-case tags.</span>
+
+<span class="keyword">var</span> omittedCloseTags = {
+  <span class="string">'area'</span>: <span class="literal">true</span>,
+  <span class="string">'base'</span>: <span class="literal">true</span>,
+  <span class="string">'br'</span>: <span class="literal">true</span>,
+  <span class="string">'col'</span>: <span class="literal">true</span>,
+  <span class="string">'embed'</span>: <span class="literal">true</span>,
+  <span class="string">'hr'</span>: <span class="literal">true</span>,
+  <span class="string">'img'</span>: <span class="literal">true</span>,
+  <span class="string">'input'</span>: <span class="literal">true</span>,
+  <span class="string">'keygen'</span>: <span class="literal">true</span>,
+  <span class="string">'link'</span>: <span class="literal">true</span>,
+  <span class="string">'meta'</span>: <span class="literal">true</span>,
+  <span class="string">'param'</span>: <span class="literal">true</span>,
+  <span class="string">'source'</span>: <span class="literal">true</span>,
+  <span class="string">'track'</span>: <span class="literal">true</span>,
+  <span class="string">'wbr'</span>: <span class="literal">true</span>
+};
+
+<span class="comment">// NOTE: menuitem's close tag should be omitted, but that causes problems.</span>
+<span class="keyword">var</span> newlineEatingTags = {
+  <span class="string">'listing'</span>: <span class="literal">true</span>,
+  <span class="string">'pre'</span>: <span class="literal">true</span>,
+  <span class="string">'textarea'</span>: <span class="literal">true</span>
+};
+
+<span class="comment">// For HTML, certain tags cannot have children. This has the same purpose as</span>
+<span class="comment">// `omittedCloseTags` except that `menuitem` should still have its closing tag.</span>
+
+<span class="keyword">var</span> voidElementTags = assign({
+  <span class="string">'menuitem'</span>: <span class="literal">true</span>
+}, omittedCloseTags);
+
+<span class="comment">// We accept any tag to be rendered but since this gets injected into arbitrary</span>
+<span class="comment">// HTML, we want to make sure that it's a safe tag.</span>
+<span class="comment">// http://www.w3.org/TR/REC-xml/#NT-Name</span>
+
+<span class="keyword">var</span> VALID_TAG_REGEX = <span class="regexp">/^[a-zA-Z][a-zA-Z:_\.\-\d]*$/</span>; <span class="comment">// Simplified subset</span>
+<span class="keyword">var</span> validatedTagCache = {};
+<span class="keyword">var</span> hasOwnProperty = ({}).hasOwnProperty;
+
+<span class="function"><span class="keyword">function</span> <span class="title">validateDangerousTag</span><span class="params">(tag)</span> {</span>
+  <span class="keyword">if</span> (!hasOwnProperty.call(validatedTagCache, tag)) {
+    !VALID_TAG_REGEX.test(tag) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Invalid tag: %s'</span>, tag) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    validatedTagCache[tag] = <span class="literal">true</span>;
+  }
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">isCustomComponent</span><span class="params">(tagName, props)</span> {</span>
+  <span class="keyword">return</span> tagName.indexOf(<span class="string">'-'</span>) >= <span class="number">0</span> || props.is != <span class="literal">null</span>;
+}
+
+<span class="keyword">var</span> globalIdCounter = <span class="number">1</span>;
+
+<span class="comment">/**
+ * Creates a new React class that is idempotent and capable of containing other
+ * React components. It accepts event listeners and DOM properties that are
+ * valid according to `DOMProperty`.
+ *
+ *  - Event listeners: `onClick`, `onMouseDown`, etc.
+ *  - DOM properties: `className`, `name`, `title`, etc.
+ *
+ * The `style` property functions differently from the DOM API. It accepts an
+ * object mapping of style properties to values.
+ *
+ * @constructor ReactDOMComponent
+ * @extends ReactMultiChild
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">ReactDOMComponent</span><span class="params">(tag)</span> {</span>
+  validateDangerousTag(tag);
+  <span class="keyword">this</span>._tag = tag.toLowerCase();
+  <span class="keyword">this</span>._namespaceURI = <span class="literal">null</span>;
+  <span class="keyword">this</span>._renderedChildren = <span class="literal">null</span>;
+  <span class="keyword">this</span>._previousStyle = <span class="literal">null</span>;
+  <span class="keyword">this</span>._previousStyleCopy = <span class="literal">null</span>;
+  <span class="keyword">this</span>._nativeNode = <span class="literal">null</span>;
+  <span class="keyword">this</span>._nativeParent = <span class="literal">null</span>;
+  <span class="keyword">this</span>._rootNodeID = <span class="literal">null</span>;
+  <span class="keyword">this</span>._domID = <span class="literal">null</span>;
+  <span class="keyword">this</span>._nativeContainerInfo = <span class="literal">null</span>;
+  <span class="keyword">this</span>._wrapperState = <span class="literal">null</span>;
+  <span class="keyword">this</span>._topLevelWrapper = <span class="literal">null</span>;
+  <span class="keyword">this</span>._flags = <span class="number">0</span>;
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    <span class="keyword">this</span>._ancestorInfo = <span class="literal">null</span>;
+  }
+}
+
+ReactDOMComponent.displayName = <span class="string">'ReactDOMComponent'</span>;
+
+ReactDOMComponent.Mixin = {
+
+  construct: <span class="function"><span class="keyword">function</span> <span class="params">(element)</span> {</span>
+    <span class="keyword">this</span>._currentElement = element;
+  },
+
+  <span class="comment">/**
+   * Generates root tag markup then recurses. This method has side effects and
+   * is not idempotent.
+   *
+   * @internal
+   * @param {ReactReconcileTransaction|ReactServerRenderingTransaction} transaction
+   * @param {?ReactDOMComponent} the containing DOM component instance
+   * @param {?object} info about the native container
+   * @param {object} context
+   * @return {string} The computed markup.
+   */</span>
+  mountComponent: <span class="function"><span class="keyword">function</span> <span class="params">(transaction, nativeParent, nativeContainerInfo, context)</span> {</span>
+    <span class="keyword">this</span>._rootNodeID = globalIdCounter++;
+    <span class="keyword">this</span>._domID = nativeContainerInfo._idCounter++;
+    <span class="keyword">this</span>._nativeParent = nativeParent;
+    <span class="keyword">this</span>._nativeContainerInfo = nativeContainerInfo;
+
+    <span class="keyword">var</span> props = <span class="keyword">this</span>._currentElement.props;
+
+    <span class="keyword">switch</span> (<span class="keyword">this</span>._tag) {
+      <span class="keyword">case</span> <span class="string">'iframe'</span>:
+      <span class="keyword">case</span> <span class="string">'img'</span>:
+      <span class="keyword">case</span> <span class="string">'form'</span>:
+      <span class="keyword">case</span> <span class="string">'video'</span>:
+      <span class="keyword">case</span> <span class="string">'audio'</span>:
+        <span class="keyword">this</span>._wrapperState = {
+          listeners: <span class="literal">null</span>
+        };
+        transaction.getReactMountReady().enqueue(trapBubbledEventsLocal, <span class="keyword">this</span>);
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> <span class="string">'button'</span>:
+        props = ReactDOMButton.getNativeProps(<span class="keyword">this</span>, props, nativeParent);
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> <span class="string">'input'</span>:
+        ReactDOMInput.mountWrapper(<span class="keyword">this</span>, props, nativeParent);
+        props = ReactDOMInput.getNativeProps(<span class="keyword">this</span>, props);
+        transaction.getReactMountReady().enqueue(trapBubbledEventsLocal, <span class="keyword">this</span>);
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> <span class="string">'option'</span>:
+        ReactDOMOption.mountWrapper(<span class="keyword">this</span>, props, nativeParent);
+        props = ReactDOMOption.getNativeProps(<span class="keyword">this</span>, props);
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> <span class="string">'select'</span>:
+        ReactDOMSelect.mountWrapper(<span class="keyword">this</span>, props, nativeParent);
+        props = ReactDOMSelect.getNativeProps(<span class="keyword">this</span>, props);
+        transaction.getReactMountReady().enqueue(trapBubbledEventsLocal, <span class="keyword">this</span>);
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> <span class="string">'textarea'</span>:
+        ReactDOMTextarea.mountWrapper(<span class="keyword">this</span>, props, nativeParent);
+        props = ReactDOMTextarea.getNativeProps(<span class="keyword">this</span>, props);
+        transaction.getReactMountReady().enqueue(trapBubbledEventsLocal, <span class="keyword">this</span>);
+        <span class="keyword">break</span>;
+    }
+
+    assertValidProps(<span class="keyword">this</span>, props);
+
+    <span class="comment">// We create tags in the namespace of their parent container, except HTML</span>
+    <span class="comment">// tags get no namespace.</span>
+    <span class="keyword">var</span> namespaceURI;
+    <span class="keyword">var</span> parentTag;
+    <span class="keyword">if</span> (nativeParent != <span class="literal">null</span>) {
+      namespaceURI = nativeParent._namespaceURI;
+      parentTag = nativeParent._tag;
+    } <span class="keyword">else</span> <span class="keyword">if</span> (nativeContainerInfo._tag) {
+      namespaceURI = nativeContainerInfo._namespaceURI;
+      parentTag = nativeContainerInfo._tag;
+    }
+    <span class="keyword">if</span> (namespaceURI == <span class="literal">null</span> || namespaceURI === DOMNamespaces.svg &amp;&amp; parentTag === <span class="string">'foreignobject'</span>) {
+      namespaceURI = DOMNamespaces.html;
+    }
+    <span class="keyword">if</span> (namespaceURI === DOMNamespaces.html) {
+      <span class="keyword">if</span> (<span class="keyword">this</span>._tag === <span class="string">'svg'</span>) {
+        namespaceURI = DOMNamespaces.svg;
+      } <span class="keyword">else</span> <span class="keyword">if</span> (<span class="keyword">this</span>._tag === <span class="string">'math'</span>) {
+        namespaceURI = DOMNamespaces.mathml;
+      }
+    }
+    <span class="keyword">this</span>._namespaceURI = namespaceURI;
+
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      <span class="keyword">var</span> parentInfo;
+      <span class="keyword">if</span> (nativeParent != <span class="literal">null</span>) {
+        parentInfo = nativeParent._ancestorInfo;
+      } <span class="keyword">else</span> <span class="keyword">if</span> (nativeContainerInfo._tag) {
+        parentInfo = nativeContainerInfo._ancestorInfo;
+      }
+      <span class="keyword">if</span> (parentInfo) {
+        <span class="comment">// parentInfo should always be present except for the top-level</span>
+        <span class="comment">// component when server rendering</span>
+        validateDOMNesting(<span class="keyword">this</span>._tag, <span class="keyword">this</span>, parentInfo);
+      }
+      <span class="keyword">this</span>._ancestorInfo = validateDOMNesting.updatedAncestorInfo(parentInfo, <span class="keyword">this</span>._tag, <span class="keyword">this</span>);
+    }
+
+    <span class="keyword">var</span> mountImage;
+    <span class="keyword">if</span> (transaction.useCreateElement) {
+      <span class="keyword">var</span> ownerDocument = nativeContainerInfo._ownerDocument;
+      <span class="keyword">var</span> el;
+      <span class="keyword">if</span> (namespaceURI === DOMNamespaces.html) {
+        <span class="keyword">if</span> (<span class="keyword">this</span>._tag === <span class="string">'script'</span>) {
+          <span class="comment">// Create the script via .innerHTML so its "parser-inserted" flag is</span>
+          <span class="comment">// set to true and it does not execute</span>
+          <span class="keyword">var</span> div = ownerDocument.createElement(<span class="string">'div'</span>);
+          <span class="keyword">var</span> type = <span class="keyword">this</span>._currentElement.type;
+          div.innerHTML = <span class="string">'&lt;'</span> + type + <span class="string">'>&lt;/'</span> + type + <span class="string">'>'</span>;
+          el = div.removeChild(div.firstChild);
+        } <span class="keyword">else</span> {
+          el = ownerDocument.createElement(<span class="keyword">this</span>._currentElement.type);
+        }
+      } <span class="keyword">else</span> {
+        el = ownerDocument.createElementNS(namespaceURI, <span class="keyword">this</span>._currentElement.type);
+      }
+      ReactDOMComponentTree.precacheNode(<span class="keyword">this</span>, el);
+      <span class="keyword">this</span>._flags |= Flags.hasCachedChildNodes;
+      <span class="keyword">if</span> (!<span class="keyword">this</span>._nativeParent) {
+        DOMPropertyOperations.setAttributeForRoot(el);
+      }
+      <span class="keyword">this</span>._updateDOMProperties(<span class="literal">null</span>, props, transaction);
+      <span class="keyword">var</span> lazyTree = DOMLazyTree(el);
+      <span class="keyword">this</span>._createInitialChildren(transaction, props, context, lazyTree);
+      mountImage = lazyTree;
+    } <span class="keyword">else</span> {
+      <span class="keyword">var</span> tagOpen = <span class="keyword">this</span>._createOpenTagMarkupAndPutListeners(transaction, props);
+      <span class="keyword">var</span> tagContent = <span class="keyword">this</span>._createContentMarkup(transaction, props, context);
+      <span class="keyword">if</span> (!tagContent &amp;&amp; omittedCloseTags[<span class="keyword">this</span>._tag]) {
+        mountImage = tagOpen + <span class="string">'/>'</span>;
+      } <span class="keyword">else</span> {
+        mountImage = tagOpen + <span class="string">'>'</span> + tagContent + <span class="string">'&lt;/'</span> + <span class="keyword">this</span>._currentElement.type + <span class="string">'>'</span>;
+      }
+    }
+
+    <span class="keyword">switch</span> (<span class="keyword">this</span>._tag) {
+      <span class="keyword">case</span> <span class="string">'input'</span>:
+        transaction.getReactMountReady().enqueue(mountReadyInputWrapper, <span class="keyword">this</span>);
+      <span class="comment">// falls through</span>
+      <span class="keyword">case</span> <span class="string">'button'</span>:
+      <span class="keyword">case</span> <span class="string">'select'</span>:
+      <span class="keyword">case</span> <span class="string">'textarea'</span>:
+        <span class="keyword">if</span> (props.autoFocus) {
+          transaction.getReactMountReady().enqueue(AutoFocusUtils.focusDOMComponent, <span class="keyword">this</span>);
+        }
+        <span class="keyword">break</span>;
+    }
+
+    <span class="keyword">return</span> mountImage;
+  },
+
+  <span class="comment">/**
+   * Creates markup for the open tag and all attributes.
+   *
+   * This method has side effects because events get registered.
+   *
+   * Iterating over object properties is faster than iterating over arrays.
+   * @see http://jsperf.com/obj-vs-arr-iteration
+   *
+   * @private
+   * @param {ReactReconcileTransaction|ReactServerRenderingTransaction} transaction
+   * @param {object} props
+   * @return {string} Markup of opening tag.
+   */</span>
+  _createOpenTagMarkupAndPutListeners: <span class="function"><span class="keyword">function</span> <span class="params">(transaction, props)</span> {</span>
+    <span class="keyword">var</span> ret = <span class="string">'&lt;'</span> + <span class="keyword">this</span>._currentElement.type;
+
+    <span class="keyword">for</span> (<span class="keyword">var</span> propKey <span class="keyword">in</span> props) {
+      <span class="keyword">if</span> (!props.hasOwnProperty(propKey)) {
+        <span class="keyword">continue</span>;
+      }
+      <span class="keyword">var</span> propValue = props[propKey];
+      <span class="keyword">if</span> (propValue == <span class="literal">null</span>) {
+        <span class="keyword">continue</span>;
+      }
+      <span class="keyword">if</span> (registrationNameModules.hasOwnProperty(propKey)) {
+        <span class="keyword">if</span> (propValue) {
+          enqueuePutListener(<span class="keyword">this</span>, propKey, propValue, transaction);
+        }
+      } <span class="keyword">else</span> {
+        <span class="keyword">if</span> (propKey === STYLE) {
+          <span class="keyword">if</span> (propValue) {
+            <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+              <span class="comment">// See `_updateDOMProperties`. style block</span>
+              <span class="keyword">this</span>._previousStyle = propValue;
+            }
+            propValue = <span class="keyword">this</span>._previousStyleCopy = assign({}, props.style);
+          }
+          propValue = CSSPropertyOperations.createMarkupForStyles(propValue, <span class="keyword">this</span>);
+        }
+        <span class="keyword">var</span> markup = <span class="literal">null</span>;
+        <span class="keyword">if</span> (<span class="keyword">this</span>._tag != <span class="literal">null</span> &amp;&amp; isCustomComponent(<span class="keyword">this</span>._tag, props)) {
+          <span class="keyword">if</span> (propKey !== CHILDREN) {
+            markup = DOMPropertyOperations.createMarkupForCustomAttribute(propKey, propValue);
+          }
+        } <span class="keyword">else</span> {
+          markup = DOMPropertyOperations.createMarkupForProperty(propKey, propValue);
+        }
+        <span class="keyword">if</span> (markup) {
+          ret += <span class="string">' '</span> + markup;
+        }
+      }
+    }
+
+    <span class="comment">// For static pages, no need to put React ID and checksum. Saves lots of</span>
+    <span class="comment">// bytes.</span>
+    <span class="keyword">if</span> (transaction.renderToStaticMarkup) {
+      <span class="keyword">return</span> ret;
+    }
+
+    <span class="keyword">if</span> (!<span class="keyword">this</span>._nativeParent) {
+      ret += <span class="string">' '</span> + DOMPropertyOperations.createMarkupForRoot();
+    }
+    ret += <span class="string">' '</span> + DOMPropertyOperations.createMarkupForID(<span class="keyword">this</span>._domID);
+    <span class="keyword">return</span> ret;
+  },
+
+  <span class="comment">/**
+   * Creates markup for the content between the tags.
+   *
+   * @private
+   * @param {ReactReconcileTransaction|ReactServerRenderingTransaction} transaction
+   * @param {object} props
+   * @param {object} context
+   * @return {string} Content markup.
+   */</span>
+  _createContentMarkup: <span class="function"><span class="keyword">function</span> <span class="params">(transaction, props, context)</span> {</span>
+    <span class="keyword">var</span> ret = <span class="string">''</span>;
+
+    <span class="comment">// Intentional use of != to avoid catching zero/false.</span>
+    <span class="keyword">var</span> innerHTML = props.dangerouslySetInnerHTML;
+    <span class="keyword">if</span> (innerHTML != <span class="literal">null</span>) {
+      <span class="keyword">if</span> (innerHTML.__html != <span class="literal">null</span>) {
+        ret = innerHTML.__html;
+      }
+    } <span class="keyword">else</span> {
+      <span class="keyword">var</span> contentToUse = CONTENT_TYPES[<span class="keyword">typeof</span> props.children] ? props.children : <span class="literal">null</span>;
+      <span class="keyword">var</span> childrenToUse = contentToUse != <span class="literal">null</span> ? <span class="literal">null</span> : props.children;
+      <span class="keyword">if</span> (contentToUse != <span class="literal">null</span>) {
+        <span class="comment">// TODO: Validate that text is allowed as a child of this node</span>
+        ret = escapeTextContentForBrowser(contentToUse);
+      } <span class="keyword">else</span> <span class="keyword">if</span> (childrenToUse != <span class="literal">null</span>) {
+        <span class="keyword">var</span> mountImages = <span class="keyword">this</span>.mountChildren(childrenToUse, transaction, context);
+        ret = mountImages.join(<span class="string">''</span>);
+      }
+    }
+    <span class="keyword">if</span> (newlineEatingTags[<span class="keyword">this</span>._tag] &amp;&amp; ret.charAt(<span class="number">0</span>) === <span class="string">'\n'</span>) {
+      <span class="comment">// text/html ignores the first character in these tags if it's a newline</span>
+      <span class="comment">// Prefer to break application/xml over text/html (for now) by adding</span>
+      <span class="comment">// a newline specifically to get eaten by the parser. (Alternately for</span>
+      <span class="comment">// textareas, replacing "^\n" with "\r\n" doesn't get eaten, and the first</span>
+      <span class="comment">// \r is normalized out by HTMLTextAreaElement#value.)</span>
+      <span class="comment">// See: &lt;http://www.w3.org/TR/html-polyglot/#newlines-in-textarea-and-pre></span>
+      <span class="comment">// See: &lt;http://www.w3.org/TR/html5/syntax.html#element-restrictions></span>
+      <span class="comment">// See: &lt;http://www.w3.org/TR/html5/syntax.html#newlines></span>
+      <span class="comment">// See: Parsing of "textarea" "listing" and "pre" elements</span>
+      <span class="comment">//  from &lt;http://www.w3.org/TR/html5/syntax.html#parsing-main-inbody></span>
+      <span class="keyword">return</span> <span class="string">'\n'</span> + ret;
+    } <span class="keyword">else</span> {
+      <span class="keyword">return</span> ret;
+    }
+  },
+
+  _createInitialChildren: <span class="function"><span class="keyword">function</span> <span class="params">(transaction, props, context, lazyTree)</span> {</span>
+    <span class="comment">// Intentional use of != to avoid catching zero/false.</span>
+    <span class="keyword">var</span> innerHTML = props.dangerouslySetInnerHTML;
+    <span class="keyword">if</span> (innerHTML != <span class="literal">null</span>) {
+      <span class="keyword">if</span> (innerHTML.__html != <span class="literal">null</span>) {
+        DOMLazyTree.queueHTML(lazyTree, innerHTML.__html);
+      }
+    } <span class="keyword">else</span> {
+      <span class="keyword">var</span> contentToUse = CONTENT_TYPES[<span class="keyword">typeof</span> props.children] ? props.children : <span class="literal">null</span>;
+      <span class="keyword">var</span> childrenToUse = contentToUse != <span class="literal">null</span> ? <span class="literal">null</span> : props.children;
+      <span class="keyword">if</span> (contentToUse != <span class="literal">null</span>) {
+        <span class="comment">// TODO: Validate that text is allowed as a child of this node</span>
+        DOMLazyTree.queueText(lazyTree, contentToUse);
+      } <span class="keyword">else</span> <span class="keyword">if</span> (childrenToUse != <span class="literal">null</span>) {
+        <span class="keyword">var</span> mountImages = <span class="keyword">this</span>.mountChildren(childrenToUse, transaction, context);
+        <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; mountImages.length; i++) {
+          DOMLazyTree.queueChild(lazyTree, mountImages[i]);
+        }
+      }
+    }
+  },
+
+  <span class="comment">/**
+   * Receives a next element and updates the component.
+   *
+   * @internal
+   * @param {ReactElement} nextElement
+   * @param {ReactReconcileTransaction|ReactServerRenderingTransaction} transaction
+   * @param {object} context
+   */</span>
+  receiveComponent: <span class="function"><span class="keyword">function</span> <span class="params">(nextElement, transaction, context)</span> {</span>
+    <span class="keyword">var</span> prevElement = <span class="keyword">this</span>._currentElement;
+    <span class="keyword">this</span>._currentElement = nextElement;
+    <span class="keyword">this</span>.updateComponent(transaction, prevElement, nextElement, context);
+  },
+
+  <span class="comment">/**
+   * Updates a native DOM component after it has already been allocated and
+   * attached to the DOM. Reconciles the root DOM node, then recurses.
+   *
+   * @param {ReactReconcileTransaction} transaction
+   * @param {ReactElement} prevElement
+   * @param {ReactElement} nextElement
+   * @internal
+   * @overridable
+   */</span>
+  updateComponent: <span class="function"><span class="keyword">function</span> <span class="params">(transaction, prevElement, nextElement, context)</span> {</span>
+    <span class="keyword">var</span> lastProps = prevElement.props;
+    <span class="keyword">var</span> nextProps = <span class="keyword">this</span>._currentElement.props;
+
+    <span class="keyword">switch</span> (<span class="keyword">this</span>._tag) {
+      <span class="keyword">case</span> <span class="string">'button'</span>:
+        lastProps = ReactDOMButton.getNativeProps(<span class="keyword">this</span>, lastProps);
+        nextProps = ReactDOMButton.getNativeProps(<span class="keyword">this</span>, nextProps);
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> <span class="string">'input'</span>:
+        ReactDOMInput.updateWrapper(<span class="keyword">this</span>);
+        lastProps = ReactDOMInput.getNativeProps(<span class="keyword">this</span>, lastProps);
+        nextProps = ReactDOMInput.getNativeProps(<span class="keyword">this</span>, nextProps);
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> <span class="string">'option'</span>:
+        lastProps = ReactDOMOption.getNativeProps(<span class="keyword">this</span>, lastProps);
+        nextProps = ReactDOMOption.getNativeProps(<span class="keyword">this</span>, nextProps);
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> <span class="string">'select'</span>:
+        lastProps = ReactDOMSelect.getNativeProps(<span class="keyword">this</span>, lastProps);
+        nextProps = ReactDOMSelect.getNativeProps(<span class="keyword">this</span>, nextProps);
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> <span class="string">'textarea'</span>:
+        ReactDOMTextarea.updateWrapper(<span class="keyword">this</span>);
+        lastProps = ReactDOMTextarea.getNativeProps(<span class="keyword">this</span>, lastProps);
+        nextProps = ReactDOMTextarea.getNativeProps(<span class="keyword">this</span>, nextProps);
+        <span class="keyword">break</span>;
+    }
+
+    assertValidProps(<span class="keyword">this</span>, nextProps);
+    <span class="keyword">this</span>._updateDOMProperties(lastProps, nextProps, transaction);
+    <span class="keyword">this</span>._updateDOMChildren(lastProps, nextProps, transaction, context);
+
+    <span class="keyword">if</span> (!canDefineProperty &amp;&amp; <span class="keyword">this</span>._flags &amp; Flags.nodeHasLegacyProperties) {
+      <span class="keyword">this</span>._nativeNode.props = nextProps;
+    }
+
+    <span class="keyword">if</span> (<span class="keyword">this</span>._tag === <span class="string">'select'</span>) {
+      <span class="comment">// &lt;select> value update needs to occur after &lt;option> children</span>
+      <span class="comment">// reconciliation</span>
+      transaction.getReactMountReady().enqueue(postUpdateSelectWrapper, <span class="keyword">this</span>);
+    }
+  },
+
+  <span class="comment">/**
+   * Reconciles the properties by detecting differences in property values and
+   * updating the DOM as necessary. This function is probably the single most
+   * critical path for performance optimization.
+   *
+   * TODO: Benchmark whether checking for changed values in memory actually
+   *       improves performance (especially statically positioned elements).
+   * TODO: Benchmark the effects of putting this at the top since 99% of props
+   *       do not change for a given reconciliation.
+   * TODO: Benchmark areas that can be improved with caching.
+   *
+   * @private
+   * @param {object} lastProps
+   * @param {object} nextProps
+   * @param {?DOMElement} node
+   */</span>
+  _updateDOMProperties: <span class="function"><span class="keyword">function</span> <span class="params">(lastProps, nextProps, transaction)</span> {</span>
+    <span class="keyword">var</span> propKey;
+    <span class="keyword">var</span> styleName;
+    <span class="keyword">var</span> styleUpdates;
+    <span class="keyword">for</span> (propKey <span class="keyword">in</span> lastProps) {
+      <span class="keyword">if</span> (nextProps.hasOwnProperty(propKey) || !lastProps.hasOwnProperty(propKey) || lastProps[propKey] == <span class="literal">null</span>) {
+        <span class="keyword">continue</span>;
+      }
+      <span class="keyword">if</span> (propKey === STYLE) {
+        <span class="keyword">var</span> lastStyle = <span class="keyword">this</span>._previousStyleCopy;
+        <span class="keyword">for</span> (styleName <span class="keyword">in</span> lastStyle) {
+          <span class="keyword">if</span> (lastStyle.hasOwnProperty(styleName)) {
+            styleUpdates = styleUpdates || {};
+            styleUpdates[styleName] = <span class="string">''</span>;
+          }
+        }
+        <span class="keyword">this</span>._previousStyleCopy = <span class="literal">null</span>;
+      } <span class="keyword">else</span> <span class="keyword">if</span> (registrationNameModules.hasOwnProperty(propKey)) {
+        <span class="keyword">if</span> (lastProps[propKey]) {
+          <span class="comment">// Only call deleteListener if there was a listener previously or</span>
+          <span class="comment">// else willDeleteListener gets called when there wasn't actually a</span>
+          <span class="comment">// listener (e.g., onClick={null})</span>
+          deleteListener(<span class="keyword">this</span>, propKey);
+        }
+      } <span class="keyword">else</span> <span class="keyword">if</span> (DOMProperty.properties[propKey] || DOMProperty.isCustomAttribute(propKey)) {
+        DOMPropertyOperations.deleteValueForProperty(getNode(<span class="keyword">this</span>), propKey);
+      }
+    }
+    <span class="keyword">for</span> (propKey <span class="keyword">in</span> nextProps) {
+      <span class="keyword">var</span> nextProp = nextProps[propKey];
+      <span class="keyword">var</span> lastProp = propKey === STYLE ? <span class="keyword">this</span>._previousStyleCopy : lastProps != <span class="literal">null</span> ? lastProps[propKey] : <span class="literal">undefined</span>;
+      <span class="keyword">if</span> (!nextProps.hasOwnProperty(propKey) || nextProp === lastProp || nextProp == <span class="literal">null</span> &amp;&amp; lastProp == <span class="literal">null</span>) {
+        <span class="keyword">continue</span>;
+      }
+      <span class="keyword">if</span> (propKey === STYLE) {
+        <span class="keyword">if</span> (nextProp) {
+          <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+            checkAndWarnForMutatedStyle(<span class="keyword">this</span>._previousStyleCopy, <span class="keyword">this</span>._previousStyle, <span class="keyword">this</span>);
+            <span class="keyword">this</span>._previousStyle = nextProp;
+          }
+          nextProp = <span class="keyword">this</span>._previousStyleCopy = assign({}, nextProp);
+        } <span class="keyword">else</span> {
+          <span class="keyword">this</span>._previousStyleCopy = <span class="literal">null</span>;
+        }
+        <span class="keyword">if</span> (lastProp) {
+          <span class="comment">// Unset styles on `lastProp` but not on `nextProp`.</span>
+          <span class="keyword">for</span> (styleName <span class="keyword">in</span> lastProp) {
+            <span class="keyword">if</span> (lastProp.hasOwnProperty(styleName) &amp;&amp; (!nextProp || !nextProp.hasOwnProperty(styleName))) {
+              styleUpdates = styleUpdates || {};
+              styleUpdates[styleName] = <span class="string">''</span>;
+            }
+          }
+          <span class="comment">// Update styles that changed since `lastProp`.</span>
+          <span class="keyword">for</span> (styleName <span class="keyword">in</span> nextProp) {
+            <span class="keyword">if</span> (nextProp.hasOwnProperty(styleName) &amp;&amp; lastProp[styleName] !== nextProp[styleName]) {
+              styleUpdates = styleUpdates || {};
+              styleUpdates[styleName] = nextProp[styleName];
+            }
+          }
+        } <span class="keyword">else</span> {
+          <span class="comment">// Relies on `updateStylesByID` not mutating `styleUpdates`.</span>
+          styleUpdates = nextProp;
+        }
+      } <span class="keyword">else</span> <span class="keyword">if</span> (registrationNameModules.hasOwnProperty(propKey)) {
+        <span class="keyword">if</span> (nextProp) {
+          enqueuePutListener(<span class="keyword">this</span>, propKey, nextProp, transaction);
+        } <span class="keyword">else</span> <span class="keyword">if</span> (lastProp) {
+          deleteListener(<span class="keyword">this</span>, propKey);
+        }
+      } <span class="keyword">else</span> <span class="keyword">if</span> (isCustomComponent(<span class="keyword">this</span>._tag, nextProps)) {
+        <span class="keyword">if</span> (propKey === CHILDREN) {
+          nextProp = <span class="literal">null</span>;
+        }
+        DOMPropertyOperations.setValueForAttribute(getNode(<span class="keyword">this</span>), propKey, nextProp);
+      } <span class="keyword">else</span> <span class="keyword">if</span> (DOMProperty.properties[propKey] || DOMProperty.isCustomAttribute(propKey)) {
+        <span class="keyword">var</span> node = getNode(<span class="keyword">this</span>);
+        <span class="comment">// If we're updating to null or undefined, we should remove the property</span>
+        <span class="comment">// from the DOM node instead of inadvertantly setting to a string. This</span>
+        <span class="comment">// brings us in line with the same behavior we have on initial render.</span>
+        <span class="keyword">if</span> (nextProp != <span class="literal">null</span>) {
+          DOMPropertyOperations.setValueForProperty(node, propKey, nextProp);
+        } <span class="keyword">else</span> {
+          DOMPropertyOperations.deleteValueForProperty(node, propKey);
+        }
+      }
+    }
+    <span class="keyword">if</span> (styleUpdates) {
+      CSSPropertyOperations.setValueForStyles(getNode(<span class="keyword">this</span>), styleUpdates, <span class="keyword">this</span>);
+    }
+  },
+
+  <span class="comment">/**
+   * Reconciles the children with the various properties that affect the
+   * children content.
+   *
+   * @param {object} lastProps
+   * @param {object} nextProps
+   * @param {ReactReconcileTransaction} transaction
+   * @param {object} context
+   */</span>
+  _updateDOMChildren: <span class="function"><span class="keyword">function</span> <span class="params">(lastProps, nextProps, transaction, context)</span> {</span>
+    <span class="keyword">var</span> lastContent = CONTENT_TYPES[<span class="keyword">typeof</span> lastProps.children] ? lastProps.children : <span class="literal">null</span>;
+    <span class="keyword">var</span> nextContent = CONTENT_TYPES[<span class="keyword">typeof</span> nextProps.children] ? nextProps.children : <span class="literal">null</span>;
+
+    <span class="keyword">var</span> lastHtml = lastProps.dangerouslySetInnerHTML &amp;&amp; lastProps.dangerouslySetInnerHTML.__html;
+    <span class="keyword">var</span> nextHtml = nextProps.dangerouslySetInnerHTML &amp;&amp; nextProps.dangerouslySetInnerHTML.__html;
+
+    <span class="comment">// Note the use of `!=` which checks for null or undefined.</span>
+    <span class="keyword">var</span> lastChildren = lastContent != <span class="literal">null</span> ? <span class="literal">null</span> : lastProps.children;
+    <span class="keyword">var</span> nextChildren = nextContent != <span class="literal">null</span> ? <span class="literal">null</span> : nextProps.children;
+
+    <span class="comment">// If we're switching from children to content/html or vice versa, remove</span>
+    <span class="comment">// the old content</span>
+    <span class="keyword">var</span> lastHasContentOrHtml = lastContent != <span class="literal">null</span> || lastHtml != <span class="literal">null</span>;
+    <span class="keyword">var</span> nextHasContentOrHtml = nextContent != <span class="literal">null</span> || nextHtml != <span class="literal">null</span>;
+    <span class="keyword">if</span> (lastChildren != <span class="literal">null</span> &amp;&amp; nextChildren == <span class="literal">null</span>) {
+      <span class="keyword">this</span>.updateChildren(<span class="literal">null</span>, transaction, context);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (lastHasContentOrHtml &amp;&amp; !nextHasContentOrHtml) {
+      <span class="keyword">this</span>.updateTextContent(<span class="string">''</span>);
+    }
+
+    <span class="keyword">if</span> (nextContent != <span class="literal">null</span>) {
+      <span class="keyword">if</span> (lastContent !== nextContent) {
+        <span class="keyword">this</span>.updateTextContent(<span class="string">''</span> + nextContent);
+      }
+    } <span class="keyword">else</span> <span class="keyword">if</span> (nextHtml != <span class="literal">null</span>) {
+      <span class="keyword">if</span> (lastHtml !== nextHtml) {
+        <span class="keyword">this</span>.updateMarkup(<span class="string">''</span> + nextHtml);
+      }
+    } <span class="keyword">else</span> <span class="keyword">if</span> (nextChildren != <span class="literal">null</span>) {
+      <span class="keyword">this</span>.updateChildren(nextChildren, transaction, context);
+    }
+  },
+
+  getNativeNode: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> getNode(<span class="keyword">this</span>);
+  },
+
+  <span class="comment">/**
+   * Destroys all event registrations for this instance. Does not remove from
+   * the DOM. That must be done by the parent.
+   *
+   * @internal
+   */</span>
+  unmountComponent: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">switch</span> (<span class="keyword">this</span>._tag) {
+      <span class="keyword">case</span> <span class="string">'iframe'</span>:
+      <span class="keyword">case</span> <span class="string">'img'</span>:
+      <span class="keyword">case</span> <span class="string">'form'</span>:
+      <span class="keyword">case</span> <span class="string">'video'</span>:
+      <span class="keyword">case</span> <span class="string">'audio'</span>:
+        <span class="keyword">var</span> listeners = <span class="keyword">this</span>._wrapperState.listeners;
+        <span class="keyword">if</span> (listeners) {
+          <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; listeners.length; i++) {
+            listeners[i].remove();
+          }
+        }
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> <span class="string">'input'</span>:
+        ReactDOMInput.unmountWrapper(<span class="keyword">this</span>);
+        <span class="keyword">break</span>;
+      <span class="keyword">case</span> <span class="string">'html'</span>:
+      <span class="keyword">case</span> <span class="string">'head'</span>:
+      <span class="keyword">case</span> <span class="string">'body'</span>:
+        <span class="comment">/**
+         * Components like &lt;html> &lt;head> and &lt;body> can't be removed or added
+         * easily in a cross-browser way, however it's valuable to be able to
+         * take advantage of React's reconciliation for styling and &lt;title>
+         * management. So we just document it and throw in dangerous cases.
+         */</span>
+        !<span class="literal">false</span> ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'&lt;%s> tried to unmount. Because of cross-browser quirks it is '</span> + <span class="string">'impossible to unmount some top-level components (eg &lt;html>, '</span> + <span class="string">'&lt;head>, and &lt;body>) reliably and efficiently. To fix this, have a '</span> + <span class="string">'single top-level component that never unmounts render these '</span> + <span class="string">'elements.'</span>, <span class="keyword">this</span>._tag) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+        <span class="keyword">break</span>;
+    }
+
+    ReactDOMComponentTree.uncacheNode(<span class="keyword">this</span>);
+    <span class="keyword">this</span>.unmountChildren();
+    EventPluginHub.deleteAllListeners(<span class="keyword">this</span>);
+    ReactComponentBrowserEnvironment.unmountIDFromEnvironment(<span class="keyword">this</span>._rootNodeID);
+    <span class="keyword">this</span>._rootNodeID = <span class="literal">null</span>;
+    <span class="keyword">this</span>._domID = <span class="literal">null</span>;
+    <span class="keyword">this</span>._wrapperState = <span class="literal">null</span>;
+  },
+
+  getPublicInstance: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">var</span> node = getNode(<span class="keyword">this</span>);
+    <span class="keyword">if</span> (<span class="keyword">this</span>._flags &amp; Flags.nodeHasLegacyProperties) {
+      <span class="keyword">return</span> node;
+    } <span class="keyword">else</span> {
+      node.getDOMNode = legacyGetDOMNode;
+      node.isMounted = legacyIsMounted;
+      node.setState = legacySetStateEtc;
+      node.replaceState = legacySetStateEtc;
+      node.forceUpdate = legacySetStateEtc;
+      node.setProps = legacySetProps;
+      node.replaceProps = legacyReplaceProps;
+
+      <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+        <span class="keyword">if</span> (canDefineProperty) {
+          Object.defineProperties(node, legacyPropsDescriptor);
+        } <span class="keyword">else</span> {
+          <span class="comment">// updateComponent will update this property on subsequent renders</span>
+          node.props = <span class="keyword">this</span>._currentElement.props;
+        }
+      } <span class="keyword">else</span> {
+        <span class="comment">// updateComponent will update this property on subsequent renders</span>
+        node.props = <span class="keyword">this</span>._currentElement.props;
+      }
+
+      <span class="keyword">this</span>._flags |= Flags.nodeHasLegacyProperties;
+      <span class="keyword">return</span> node;
+    }
+  }
+
+};
+
+ReactPerf.measureMethods(ReactDOMComponent.Mixin, <span class="string">'ReactDOMComponent'</span>, {
+  mountComponent: <span class="string">'mountComponent'</span>,
+  receiveComponent: <span class="string">'receiveComponent'</span>
+});
+
+assign(ReactDOMComponent.prototype, ReactDOMComponent.Mixin, ReactMultiChild.Mixin, {
+  prepareToManageChildren: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="comment">// Before we add, remove, or reorder the children of a node, make sure</span>
+    <span class="comment">// we have references to all of its children so we don't lose them, even</span>
+    <span class="comment">// if nefarious browser plugins add extra nodes to our tree.</span>
+    ReactDOMComponentTree.precacheChildNodes(<span class="keyword">this</span>, getNode(<span class="keyword">this</span>));
+  }
+});
+
+module.exports = ReactDOMComponent;</code></pre>

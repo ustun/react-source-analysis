@@ -1,0 +1,70 @@
+<h1>ReactLink.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactLink
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="comment">/**
+ * ReactLink encapsulates a common pattern in which a component wants to modify
+ * a prop received from its parent. ReactLink allows the parent to pass down a
+ * value coupled with a callback that, when invoked, expresses an intent to
+ * modify that value. For example:
+ *
+ * React.createClass({
+ *   getInitialState: function() {
+ *     return {value: ''};
+ *   },
+ *   render: function() {
+ *     var valueLink = new ReactLink(this.state.value, this._handleValueChange);
+ *     return &lt;input valueLink={valueLink} />;
+ *   },
+ *   _handleValueChange: function(newValue) {
+ *     this.setState({value: newValue});
+ *   }
+ * });
+ *
+ * We have provided some sugary mixins to make the creation and
+ * consumption of ReactLink easier; see LinkedValueUtils and LinkedStateMixin.
+ */</span>
+
+<span class="keyword">var</span> React = require(<span class="string">'./React'</span>);
+
+<span class="comment">/**
+ * @param {*} value current value of the link
+ * @param {function} requestChange callback to request a change
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">ReactLink</span><span class="params">(value, requestChange)</span> {</span>
+  <span class="keyword">this</span>.value = value;
+  <span class="keyword">this</span>.requestChange = requestChange;
+}
+
+<span class="comment">/**
+ * Creates a PropType that enforces the ReactLink API and optionally checks the
+ * type of the value being passed inside the link. Example:
+ *
+ * MyComponent.propTypes = {
+ *   tabIndexLink: ReactLink.PropTypes.link(React.PropTypes.number)
+ * }
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">createLinkTypeChecker</span><span class="params">(linkType)</span> {</span>
+  <span class="keyword">var</span> shapes = {
+    value: <span class="keyword">typeof</span> linkType === <span class="string">'undefined'</span> ? React.PropTypes.any.isRequired : linkType.isRequired,
+    requestChange: React.PropTypes.func.isRequired
+  };
+  <span class="keyword">return</span> React.PropTypes.shape(shapes);
+}
+
+ReactLink.PropTypes = {
+  link: createLinkTypeChecker
+};
+
+module.exports = ReactLink;</code></pre>

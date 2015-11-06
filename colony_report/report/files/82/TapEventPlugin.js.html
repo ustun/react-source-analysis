@@ -1,0 +1,112 @@
+<h1>TapEventPlugin.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule TapEventPlugin
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> EventConstants = require(<span class="string">'./EventConstants'</span>);
+<span class="keyword">var</span> EventPluginUtils = require(<span class="string">'./EventPluginUtils'</span>);
+<span class="keyword">var</span> EventPropagators = require(<span class="string">'./EventPropagators'</span>);
+<span class="keyword">var</span> SyntheticUIEvent = require(<span class="string">'./SyntheticUIEvent'</span>);
+<span class="keyword">var</span> TouchEventUtils = require(<span class="string">'fbjs/lib/TouchEventUtils'</span>);
+<span class="keyword">var</span> ViewportMetrics = require(<span class="string">'./ViewportMetrics'</span>);
+
+<span class="keyword">var</span> keyOf = require(<span class="string">'fbjs/lib/keyOf'</span>);
+<span class="keyword">var</span> topLevelTypes = EventConstants.topLevelTypes;
+
+<span class="keyword">var</span> isStartish = EventPluginUtils.isStartish;
+<span class="keyword">var</span> isEndish = EventPluginUtils.isEndish;
+
+<span class="comment">/**
+ * Number of pixels that are tolerated in between a `touchStart` and `touchEnd`
+ * in order to still be considered a 'tap' event.
+ */</span>
+<span class="keyword">var</span> tapMoveThreshold = <span class="number">10</span>;
+<span class="keyword">var</span> startCoords = { x: <span class="literal">null</span>, y: <span class="literal">null</span> };
+
+<span class="keyword">var</span> Axis = {
+  x: { page: <span class="string">'pageX'</span>, client: <span class="string">'clientX'</span>, envScroll: <span class="string">'currentPageScrollLeft'</span> },
+  y: { page: <span class="string">'pageY'</span>, client: <span class="string">'clientY'</span>, envScroll: <span class="string">'currentPageScrollTop'</span> }
+};
+
+<span class="function"><span class="keyword">function</span> <span class="title">getAxisCoordOfEvent</span><span class="params">(axis, nativeEvent)</span> {</span>
+  <span class="keyword">var</span> singleTouch = TouchEventUtils.extractSingleTouch(nativeEvent);
+  <span class="keyword">if</span> (singleTouch) {
+    <span class="keyword">return</span> singleTouch[axis.page];
+  }
+  <span class="keyword">return</span> axis.page <span class="keyword">in</span> nativeEvent ? nativeEvent[axis.page] : nativeEvent[axis.client] + ViewportMetrics[axis.envScroll];
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">getDistance</span><span class="params">(coords, nativeEvent)</span> {</span>
+  <span class="keyword">var</span> pageX = getAxisCoordOfEvent(Axis.x, nativeEvent);
+  <span class="keyword">var</span> pageY = getAxisCoordOfEvent(Axis.y, nativeEvent);
+  <span class="keyword">return</span> Math.pow(Math.pow(pageX - coords.x, <span class="number">2</span>) + Math.pow(pageY - coords.y, <span class="number">2</span>), <span class="number">0.5</span>);
+}
+
+<span class="keyword">var</span> touchEvents = [topLevelTypes.topTouchStart, topLevelTypes.topTouchCancel, topLevelTypes.topTouchEnd, topLevelTypes.topTouchMove];
+
+<span class="keyword">var</span> dependencies = [topLevelTypes.topMouseDown, topLevelTypes.topMouseMove, topLevelTypes.topMouseUp].concat(touchEvents);
+
+<span class="keyword">var</span> eventTypes = {
+  touchTap: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onTouchTap: <span class="literal">null</span> }),
+      captured: keyOf({ onTouchTapCapture: <span class="literal">null</span> })
+    },
+    dependencies: dependencies
+  }
+};
+
+<span class="keyword">var</span> usedTouch = <span class="literal">false</span>;
+<span class="keyword">var</span> usedTouchTime = <span class="number">0</span>;
+<span class="keyword">var</span> TOUCH_DELAY = <span class="number">1000</span>;
+
+<span class="keyword">var</span> TapEventPlugin = {
+
+  tapMoveThreshold: tapMoveThreshold,
+
+  eventTypes: eventTypes,
+
+  extractEvents: <span class="function"><span class="keyword">function</span> <span class="params">(topLevelType, targetInst, nativeEvent, nativeEventTarget)</span> {</span>
+    <span class="keyword">if</span> (!isStartish(topLevelType) &amp;&amp; !isEndish(topLevelType)) {
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    }
+    <span class="comment">// on ios, there is a delay after touch event and synthetic</span>
+    <span class="comment">// mouse events, so that user can perform double tap</span>
+    <span class="comment">// solution: ignore mouse events following touchevent within small timeframe</span>
+    <span class="keyword">if</span> (touchEvents.indexOf(topLevelType) !== -<span class="number">1</span>) {
+      usedTouch = <span class="literal">true</span>;
+      usedTouchTime = Date.now();
+    } <span class="keyword">else</span> {
+      <span class="keyword">if</span> (usedTouch &amp;&amp; Date.now() - usedTouchTime &lt; TOUCH_DELAY) {
+        <span class="keyword">return</span> <span class="literal">null</span>;
+      }
+    }
+    <span class="keyword">var</span> event = <span class="literal">null</span>;
+    <span class="keyword">var</span> distance = getDistance(startCoords, nativeEvent);
+    <span class="keyword">if</span> (isEndish(topLevelType) &amp;&amp; distance &lt; tapMoveThreshold) {
+      event = SyntheticUIEvent.getPooled(eventTypes.touchTap, targetInst, nativeEvent, nativeEventTarget);
+    }
+    <span class="keyword">if</span> (isStartish(topLevelType)) {
+      startCoords.x = getAxisCoordOfEvent(Axis.x, nativeEvent);
+      startCoords.y = getAxisCoordOfEvent(Axis.y, nativeEvent);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (isEndish(topLevelType)) {
+      startCoords.x = <span class="number">0</span>;
+      startCoords.y = <span class="number">0</span>;
+    }
+    EventPropagators.accumulateTwoPhaseDispatches(event);
+    <span class="keyword">return</span> event;
+  }
+
+};
+
+module.exports = TapEventPlugin;</code></pre>

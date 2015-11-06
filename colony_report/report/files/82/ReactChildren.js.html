@@ -1,0 +1,183 @@
+<h1>ReactChildren.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactChildren
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> PooledClass = require(<span class="string">'./PooledClass'</span>);
+<span class="keyword">var</span> ReactElement = require(<span class="string">'./ReactElement'</span>);
+
+<span class="keyword">var</span> emptyFunction = require(<span class="string">'fbjs/lib/emptyFunction'</span>);
+<span class="keyword">var</span> traverseAllChildren = require(<span class="string">'./traverseAllChildren'</span>);
+
+<span class="keyword">var</span> twoArgumentPooler = PooledClass.twoArgumentPooler;
+<span class="keyword">var</span> fourArgumentPooler = PooledClass.fourArgumentPooler;
+
+<span class="keyword">var</span> userProvidedKeyEscapeRegex = <span class="regexp">/\/(?!\/)/g</span>;
+<span class="function"><span class="keyword">function</span> <span class="title">escapeUserProvidedKey</span><span class="params">(text)</span> {</span>
+  <span class="keyword">return</span> (<span class="string">''</span> + text).replace(userProvidedKeyEscapeRegex, <span class="string">'//'</span>);
+}
+
+<span class="comment">/**
+ * PooledClass representing the bookkeeping associated with performing a child
+ * traversal. Allows avoiding binding callbacks.
+ *
+ * @constructor ForEachBookKeeping
+ * @param {!function} forEachFunction Function to perform traversal with.
+ * @param {?*} forEachContext Context to perform context with.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">ForEachBookKeeping</span><span class="params">(forEachFunction, forEachContext)</span> {</span>
+  <span class="keyword">this</span>.func = forEachFunction;
+  <span class="keyword">this</span>.context = forEachContext;
+  <span class="keyword">this</span>.count = <span class="number">0</span>;
+}
+ForEachBookKeeping.prototype.destructor = <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+  <span class="keyword">this</span>.func = <span class="literal">null</span>;
+  <span class="keyword">this</span>.context = <span class="literal">null</span>;
+  <span class="keyword">this</span>.count = <span class="number">0</span>;
+};
+PooledClass.addPoolingTo(ForEachBookKeeping, twoArgumentPooler);
+
+<span class="function"><span class="keyword">function</span> <span class="title">forEachSingleChild</span><span class="params">(bookKeeping, child, name)</span> {</span>
+  <span class="keyword">var</span> func = bookKeeping.func;
+  <span class="keyword">var</span> context = bookKeeping.context;
+
+  func.call(context, child, bookKeeping.count++);
+}
+
+<span class="comment">/**
+ * Iterates through children that are typically specified as `props.children`.
+ *
+ * The provided forEachFunc(child, index) will be called for each
+ * leaf child.
+ *
+ * @param {?*} children Children tree container.
+ * @param {function(*, int)} forEachFunc
+ * @param {*} forEachContext Context for forEachContext.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">forEachChildren</span><span class="params">(children, forEachFunc, forEachContext)</span> {</span>
+  <span class="keyword">if</span> (children == <span class="literal">null</span>) {
+    <span class="keyword">return</span> children;
+  }
+  <span class="keyword">var</span> traverseContext = ForEachBookKeeping.getPooled(forEachFunc, forEachContext);
+  traverseAllChildren(children, forEachSingleChild, traverseContext);
+  ForEachBookKeeping.release(traverseContext);
+}
+
+<span class="comment">/**
+ * PooledClass representing the bookkeeping associated with performing a child
+ * mapping. Allows avoiding binding callbacks.
+ *
+ * @constructor MapBookKeeping
+ * @param {!*} mapResult Object containing the ordered map of results.
+ * @param {!function} mapFunction Function to perform mapping with.
+ * @param {?*} mapContext Context to perform mapping with.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">MapBookKeeping</span><span class="params">(mapResult, keyPrefix, mapFunction, mapContext)</span> {</span>
+  <span class="keyword">this</span>.result = mapResult;
+  <span class="keyword">this</span>.keyPrefix = keyPrefix;
+  <span class="keyword">this</span>.func = mapFunction;
+  <span class="keyword">this</span>.context = mapContext;
+  <span class="keyword">this</span>.count = <span class="number">0</span>;
+}
+MapBookKeeping.prototype.destructor = <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+  <span class="keyword">this</span>.result = <span class="literal">null</span>;
+  <span class="keyword">this</span>.keyPrefix = <span class="literal">null</span>;
+  <span class="keyword">this</span>.func = <span class="literal">null</span>;
+  <span class="keyword">this</span>.context = <span class="literal">null</span>;
+  <span class="keyword">this</span>.count = <span class="number">0</span>;
+};
+PooledClass.addPoolingTo(MapBookKeeping, fourArgumentPooler);
+
+<span class="function"><span class="keyword">function</span> <span class="title">mapSingleChildIntoContext</span><span class="params">(bookKeeping, child, childKey)</span> {</span>
+  <span class="keyword">var</span> result = bookKeeping.result;
+  <span class="keyword">var</span> keyPrefix = bookKeeping.keyPrefix;
+  <span class="keyword">var</span> func = bookKeeping.func;
+  <span class="keyword">var</span> context = bookKeeping.context;
+
+  <span class="keyword">var</span> mappedChild = func.call(context, child, bookKeeping.count++);
+  <span class="keyword">if</span> (Array.isArray(mappedChild)) {
+    mapIntoWithKeyPrefixInternal(mappedChild, result, childKey, emptyFunction.thatReturnsArgument);
+  } <span class="keyword">else</span> <span class="keyword">if</span> (mappedChild != <span class="literal">null</span>) {
+    <span class="keyword">if</span> (ReactElement.isValidElement(mappedChild)) {
+      mappedChild = ReactElement.cloneAndReplaceKey(mappedChild,
+      <span class="comment">// Keep both the (mapped) and old keys if they differ, just as</span>
+      <span class="comment">// traverseAllChildren used to do for objects as children</span>
+      keyPrefix + (mappedChild !== child ? escapeUserProvidedKey(mappedChild.key || <span class="string">''</span>) + <span class="string">'/'</span> : <span class="string">''</span>) + childKey);
+    }
+    result.push(mappedChild);
+  }
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">mapIntoWithKeyPrefixInternal</span><span class="params">(children, array, prefix, func, context)</span> {</span>
+  <span class="keyword">var</span> escapedPrefix = <span class="string">''</span>;
+  <span class="keyword">if</span> (prefix != <span class="literal">null</span>) {
+    escapedPrefix = escapeUserProvidedKey(prefix) + <span class="string">'/'</span>;
+  }
+  <span class="keyword">var</span> traverseContext = MapBookKeeping.getPooled(array, escapedPrefix, func, context);
+  traverseAllChildren(children, mapSingleChildIntoContext, traverseContext);
+  MapBookKeeping.release(traverseContext);
+}
+
+<span class="comment">/**
+ * Maps children that are typically specified as `props.children`.
+ *
+ * The provided mapFunction(child, key, index) will be called for each
+ * leaf child.
+ *
+ * @param {?*} children Children tree container.
+ * @param {function(*, int)} func The map function.
+ * @param {*} context Context for mapFunction.
+ * @return {object} Object containing the ordered map of results.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">mapChildren</span><span class="params">(children, func, context)</span> {</span>
+  <span class="keyword">if</span> (children == <span class="literal">null</span>) {
+    <span class="keyword">return</span> children;
+  }
+  <span class="keyword">var</span> result = [];
+  mapIntoWithKeyPrefixInternal(children, result, <span class="literal">null</span>, func, context);
+  <span class="keyword">return</span> result;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">forEachSingleChildDummy</span><span class="params">(traverseContext, child, name)</span> {</span>
+  <span class="keyword">return</span> <span class="literal">null</span>;
+}
+
+<span class="comment">/**
+ * Count the number of children that are typically specified as
+ * `props.children`.
+ *
+ * @param {?*} children Children tree container.
+ * @return {number} The number of children.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">countChildren</span><span class="params">(children, context)</span> {</span>
+  <span class="keyword">return</span> traverseAllChildren(children, forEachSingleChildDummy, <span class="literal">null</span>);
+}
+
+<span class="comment">/**
+ * Flatten a children object (typically specified as `props.children`) and
+ * return an array with appropriately re-keyed children.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">toArray</span><span class="params">(children)</span> {</span>
+  <span class="keyword">var</span> result = [];
+  mapIntoWithKeyPrefixInternal(children, result, <span class="literal">null</span>, emptyFunction.thatReturnsArgument);
+  <span class="keyword">return</span> result;
+}
+
+<span class="keyword">var</span> ReactChildren = {
+  forEach: forEachChildren,
+  map: mapChildren,
+  mapIntoWithKeyPrefixInternal: mapIntoWithKeyPrefixInternal,
+  count: countChildren,
+  toArray: toArray
+};
+
+module.exports = ReactChildren;</code></pre>

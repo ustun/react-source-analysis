@@ -1,0 +1,74 @@
+<h1>SyntheticMouseEvent.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule SyntheticMouseEvent
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> SyntheticUIEvent = require(<span class="string">'./SyntheticUIEvent'</span>);
+<span class="keyword">var</span> ViewportMetrics = require(<span class="string">'./ViewportMetrics'</span>);
+
+<span class="keyword">var</span> getEventModifierState = require(<span class="string">'./getEventModifierState'</span>);
+
+<span class="comment">/**
+ * @interface MouseEvent
+ * @see http://www.w3.org/TR/DOM-Level-3-Events/
+ */</span>
+<span class="keyword">var</span> MouseEventInterface = {
+  screenX: <span class="literal">null</span>,
+  screenY: <span class="literal">null</span>,
+  clientX: <span class="literal">null</span>,
+  clientY: <span class="literal">null</span>,
+  ctrlKey: <span class="literal">null</span>,
+  shiftKey: <span class="literal">null</span>,
+  altKey: <span class="literal">null</span>,
+  metaKey: <span class="literal">null</span>,
+  getModifierState: getEventModifierState,
+  button: <span class="function"><span class="keyword">function</span> <span class="params">(event)</span> {</span>
+    <span class="comment">// Webkit, Firefox, IE9+</span>
+    <span class="comment">// which:  1 2 3</span>
+    <span class="comment">// button: 0 1 2 (standard)</span>
+    <span class="keyword">var</span> button = event.button;
+    <span class="keyword">if</span> (<span class="string">'which'</span> <span class="keyword">in</span> event) {
+      <span class="keyword">return</span> button;
+    }
+    <span class="comment">// IE&lt;9</span>
+    <span class="comment">// which:  undefined</span>
+    <span class="comment">// button: 0 0 0</span>
+    <span class="comment">// button: 1 4 2 (onmouseup)</span>
+    <span class="keyword">return</span> button === <span class="number">2</span> ? <span class="number">2</span> : button === <span class="number">4</span> ? <span class="number">1</span> : <span class="number">0</span>;
+  },
+  buttons: <span class="literal">null</span>,
+  relatedTarget: <span class="function"><span class="keyword">function</span> <span class="params">(event)</span> {</span>
+    <span class="keyword">return</span> event.relatedTarget || (event.fromElement === event.srcElement ? event.toElement : event.fromElement);
+  },
+  <span class="comment">// "Proprietary" Interface.</span>
+  pageX: <span class="function"><span class="keyword">function</span> <span class="params">(event)</span> {</span>
+    <span class="keyword">return</span> <span class="string">'pageX'</span> <span class="keyword">in</span> event ? event.pageX : event.clientX + ViewportMetrics.currentScrollLeft;
+  },
+  pageY: <span class="function"><span class="keyword">function</span> <span class="params">(event)</span> {</span>
+    <span class="keyword">return</span> <span class="string">'pageY'</span> <span class="keyword">in</span> event ? event.pageY : event.clientY + ViewportMetrics.currentScrollTop;
+  }
+};
+
+<span class="comment">/**
+ * @param {object} dispatchConfig Configuration used to dispatch this event.
+ * @param {string} dispatchMarker Marker identifying the event target.
+ * @param {object} nativeEvent Native browser event.
+ * @extends {SyntheticUIEvent}
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">SyntheticMouseEvent</span><span class="params">(dispatchConfig, dispatchMarker, nativeEvent, nativeEventTarget)</span> {</span>
+  SyntheticUIEvent.call(<span class="keyword">this</span>, dispatchConfig, dispatchMarker, nativeEvent, nativeEventTarget);
+}
+
+SyntheticUIEvent.augmentClass(SyntheticMouseEvent, MouseEventInterface);
+
+module.exports = SyntheticMouseEvent;</code></pre>

@@ -1,0 +1,120 @@
+<h1>PooledClass.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule PooledClass
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+
+<span class="comment">/**
+ * Static poolers. Several custom versions for each potential number of
+ * arguments. A completely generic pooler is easy to implement, but would
+ * require accessing the `arguments` object. In each of these, `this` refers to
+ * the Class itself, not an instance. If any others are needed, simply add them
+ * here, or in their own files.
+ */</span>
+<span class="keyword">var</span> oneArgumentPooler = <span class="function"><span class="keyword">function</span> <span class="params">(copyFieldsFrom)</span> {</span>
+  <span class="keyword">var</span> Klass = <span class="keyword">this</span>;
+  <span class="keyword">if</span> (Klass.instancePool.length) {
+    <span class="keyword">var</span> instance = Klass.instancePool.pop();
+    Klass.call(instance, copyFieldsFrom);
+    <span class="keyword">return</span> instance;
+  } <span class="keyword">else</span> {
+    <span class="keyword">return</span> <span class="keyword">new</span> Klass(copyFieldsFrom);
+  }
+};
+
+<span class="keyword">var</span> twoArgumentPooler = <span class="function"><span class="keyword">function</span> <span class="params">(a1, a2)</span> {</span>
+  <span class="keyword">var</span> Klass = <span class="keyword">this</span>;
+  <span class="keyword">if</span> (Klass.instancePool.length) {
+    <span class="keyword">var</span> instance = Klass.instancePool.pop();
+    Klass.call(instance, a1, a2);
+    <span class="keyword">return</span> instance;
+  } <span class="keyword">else</span> {
+    <span class="keyword">return</span> <span class="keyword">new</span> Klass(a1, a2);
+  }
+};
+
+<span class="keyword">var</span> threeArgumentPooler = <span class="function"><span class="keyword">function</span> <span class="params">(a1, a2, a3)</span> {</span>
+  <span class="keyword">var</span> Klass = <span class="keyword">this</span>;
+  <span class="keyword">if</span> (Klass.instancePool.length) {
+    <span class="keyword">var</span> instance = Klass.instancePool.pop();
+    Klass.call(instance, a1, a2, a3);
+    <span class="keyword">return</span> instance;
+  } <span class="keyword">else</span> {
+    <span class="keyword">return</span> <span class="keyword">new</span> Klass(a1, a2, a3);
+  }
+};
+
+<span class="keyword">var</span> fourArgumentPooler = <span class="function"><span class="keyword">function</span> <span class="params">(a1, a2, a3, a4)</span> {</span>
+  <span class="keyword">var</span> Klass = <span class="keyword">this</span>;
+  <span class="keyword">if</span> (Klass.instancePool.length) {
+    <span class="keyword">var</span> instance = Klass.instancePool.pop();
+    Klass.call(instance, a1, a2, a3, a4);
+    <span class="keyword">return</span> instance;
+  } <span class="keyword">else</span> {
+    <span class="keyword">return</span> <span class="keyword">new</span> Klass(a1, a2, a3, a4);
+  }
+};
+
+<span class="keyword">var</span> fiveArgumentPooler = <span class="function"><span class="keyword">function</span> <span class="params">(a1, a2, a3, a4, a5)</span> {</span>
+  <span class="keyword">var</span> Klass = <span class="keyword">this</span>;
+  <span class="keyword">if</span> (Klass.instancePool.length) {
+    <span class="keyword">var</span> instance = Klass.instancePool.pop();
+    Klass.call(instance, a1, a2, a3, a4, a5);
+    <span class="keyword">return</span> instance;
+  } <span class="keyword">else</span> {
+    <span class="keyword">return</span> <span class="keyword">new</span> Klass(a1, a2, a3, a4, a5);
+  }
+};
+
+<span class="keyword">var</span> standardReleaser = <span class="function"><span class="keyword">function</span> <span class="params">(instance)</span> {</span>
+  <span class="keyword">var</span> Klass = <span class="keyword">this</span>;
+  !(instance <span class="keyword">instanceof</span> Klass) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Trying to release an instance into a pool of a different type.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  instance.destructor();
+  <span class="keyword">if</span> (Klass.instancePool.length &lt; Klass.poolSize) {
+    Klass.instancePool.push(instance);
+  }
+};
+
+<span class="keyword">var</span> DEFAULT_POOL_SIZE = <span class="number">10</span>;
+<span class="keyword">var</span> DEFAULT_POOLER = oneArgumentPooler;
+
+<span class="comment">/**
+ * Augments `CopyConstructor` to be a poolable class, augmenting only the class
+ * itself (statically) not adding any prototypical fields. Any CopyConstructor
+ * you give this may have a `poolSize` property, and will look for a
+ * prototypical `destructor` on instances (optional).
+ *
+ * @param {Function} CopyConstructor Constructor that can be used to reset.
+ * @param {Function} pooler Customizable pooler.
+ */</span>
+<span class="keyword">var</span> addPoolingTo = <span class="function"><span class="keyword">function</span> <span class="params">(CopyConstructor, pooler)</span> {</span>
+  <span class="keyword">var</span> NewKlass = CopyConstructor;
+  NewKlass.instancePool = [];
+  NewKlass.getPooled = pooler || DEFAULT_POOLER;
+  <span class="keyword">if</span> (!NewKlass.poolSize) {
+    NewKlass.poolSize = DEFAULT_POOL_SIZE;
+  }
+  NewKlass.release = standardReleaser;
+  <span class="keyword">return</span> NewKlass;
+};
+
+<span class="keyword">var</span> PooledClass = {
+  addPoolingTo: addPoolingTo,
+  oneArgumentPooler: oneArgumentPooler,
+  twoArgumentPooler: twoArgumentPooler,
+  threeArgumentPooler: threeArgumentPooler,
+  fourArgumentPooler: fourArgumentPooler,
+  fiveArgumentPooler: fiveArgumentPooler
+};
+
+module.exports = PooledClass;</code></pre>

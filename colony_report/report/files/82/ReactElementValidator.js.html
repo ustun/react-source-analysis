@@ -1,0 +1,282 @@
+<h1>ReactElementValidator.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2014-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactElementValidator
+ */</span>
+
+<span class="comment">/**
+ * ReactElementValidator provides a wrapper around a element factory
+ * which validates the props passed to the element. This is intended to be
+ * used only in DEV and could be replaced by a static type checker for languages
+ * that support it.
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactElement = require(<span class="string">'./ReactElement'</span>);
+<span class="keyword">var</span> ReactPropTypeLocations = require(<span class="string">'./ReactPropTypeLocations'</span>);
+<span class="keyword">var</span> ReactPropTypeLocationNames = require(<span class="string">'./ReactPropTypeLocationNames'</span>);
+<span class="keyword">var</span> ReactCurrentOwner = require(<span class="string">'./ReactCurrentOwner'</span>);
+
+<span class="keyword">var</span> canDefineProperty = require(<span class="string">'./canDefineProperty'</span>);
+<span class="keyword">var</span> getIteratorFn = require(<span class="string">'./getIteratorFn'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="function"><span class="keyword">function</span> <span class="title">getDeclarationErrorAddendum</span><span class="params">()</span> {</span>
+  <span class="keyword">if</span> (ReactCurrentOwner.current) {
+    <span class="keyword">var</span> name = ReactCurrentOwner.current.getName();
+    <span class="keyword">if</span> (name) {
+      <span class="keyword">return</span> <span class="string">' Check the render method of `'</span> + name + <span class="string">'`.'</span>;
+    }
+  }
+  <span class="keyword">return</span> <span class="string">''</span>;
+}
+
+<span class="comment">/**
+ * Warn if there's no key explicitly set on dynamic arrays of children or
+ * object keys are not valid. This allows us to keep track of children between
+ * updates.
+ */</span>
+<span class="keyword">var</span> ownerHasKeyUseWarning = {};
+
+<span class="keyword">var</span> loggedTypeFailures = {};
+
+<span class="comment">/**
+ * Warn if the element doesn't have an explicit key assigned to it.
+ * This element is in an array. The array could grow and shrink or be
+ * reordered. All children that haven't already been validated are required to
+ * have a "key" property assigned to it.
+ *
+ * @internal
+ * @param {ReactElement} element Element that requires a key.
+ * @param {*} parentType element's parent's type.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">validateExplicitKey</span><span class="params">(element, parentType)</span> {</span>
+  <span class="keyword">if</span> (!element._store || element._store.validated || element.key != <span class="literal">null</span>) {
+    <span class="keyword">return</span>;
+  }
+  element._store.validated = <span class="literal">true</span>;
+
+  <span class="keyword">var</span> addenda = getAddendaForKeyUse(<span class="string">'uniqueKey'</span>, element, parentType);
+  <span class="keyword">if</span> (addenda === <span class="literal">null</span>) {
+    <span class="comment">// we already showed the warning</span>
+    <span class="keyword">return</span>;
+  }
+  process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'Each child in an array or iterator should have a unique "key" prop.'</span> + <span class="string">'%s%s%s'</span>, addenda.parentOrOwner || <span class="string">''</span>, addenda.childOwner || <span class="string">''</span>, addenda.url || <span class="string">''</span>) : <span class="literal">undefined</span>;
+}
+
+<span class="comment">/**
+ * Shared warning and monitoring code for the key warnings.
+ *
+ * @internal
+ * @param {string} messageType A key used for de-duping warnings.
+ * @param {ReactElement} element Component that requires a key.
+ * @param {*} parentType element's parent's type.
+ * @returns {?object} A set of addenda to use in the warning message, or null
+ * if the warning has already been shown before (and shouldn't be shown again).
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getAddendaForKeyUse</span><span class="params">(messageType, element, parentType)</span> {</span>
+  <span class="keyword">var</span> addendum = getDeclarationErrorAddendum();
+  <span class="keyword">if</span> (!addendum) {
+    <span class="keyword">var</span> parentName = <span class="keyword">typeof</span> parentType === <span class="string">'string'</span> ? parentType : parentType.displayName || parentType.name;
+    <span class="keyword">if</span> (parentName) {
+      addendum = <span class="string">' Check the top-level render call using &lt;'</span> + parentName + <span class="string">'>.'</span>;
+    }
+  }
+
+  <span class="keyword">var</span> memoizer = ownerHasKeyUseWarning[messageType] || (ownerHasKeyUseWarning[messageType] = {});
+  <span class="keyword">if</span> (memoizer[addendum]) {
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  }
+  memoizer[addendum] = <span class="literal">true</span>;
+
+  <span class="keyword">var</span> addenda = {
+    parentOrOwner: addendum,
+    url: <span class="string">' See https://fb.me/react-warning-keys for more information.'</span>,
+    childOwner: <span class="literal">null</span>
+  };
+
+  <span class="comment">// Usually the current owner is the offender, but if it accepts children as a</span>
+  <span class="comment">// property, it may be the creator of the child that's responsible for</span>
+  <span class="comment">// assigning it a key.</span>
+  <span class="keyword">if</span> (element &amp;&amp; element._owner &amp;&amp; element._owner !== ReactCurrentOwner.current) {
+    <span class="comment">// Give the component that originally created this child.</span>
+    addenda.childOwner = <span class="string">' It was passed a child from '</span> + element._owner.getName() + <span class="string">'.'</span>;
+  }
+
+  <span class="keyword">return</span> addenda;
+}
+
+<span class="comment">/**
+ * Ensure that every element either is passed in a static location, in an
+ * array with an explicit keys property defined, or in an object literal
+ * with valid key property.
+ *
+ * @internal
+ * @param {ReactNode} node Statically passed child of any type.
+ * @param {*} parentType node's parent's type.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">validateChildKeys</span><span class="params">(node, parentType)</span> {</span>
+  <span class="keyword">if</span> (<span class="keyword">typeof</span> node !== <span class="string">'object'</span>) {
+    <span class="keyword">return</span>;
+  }
+  <span class="keyword">if</span> (Array.isArray(node)) {
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; node.length; i++) {
+      <span class="keyword">var</span> child = node[i];
+      <span class="keyword">if</span> (ReactElement.isValidElement(child)) {
+        validateExplicitKey(child, parentType);
+      }
+    }
+  } <span class="keyword">else</span> <span class="keyword">if</span> (ReactElement.isValidElement(node)) {
+    <span class="comment">// This element was passed in a valid location.</span>
+    <span class="keyword">if</span> (node._store) {
+      node._store.validated = <span class="literal">true</span>;
+    }
+  } <span class="keyword">else</span> <span class="keyword">if</span> (node) {
+    <span class="keyword">var</span> iteratorFn = getIteratorFn(node);
+    <span class="comment">// Entry iterators provide implicit keys.</span>
+    <span class="keyword">if</span> (iteratorFn) {
+      <span class="keyword">if</span> (iteratorFn !== node.entries) {
+        <span class="keyword">var</span> iterator = iteratorFn.call(node);
+        <span class="keyword">var</span> step;
+        <span class="keyword">while</span> (!(step = iterator.next()).done) {
+          <span class="keyword">if</span> (ReactElement.isValidElement(step.value)) {
+            validateExplicitKey(step.value, parentType);
+          }
+        }
+      }
+    }
+  }
+}
+
+<span class="comment">/**
+ * Assert that the props are valid
+ *
+ * @param {string} componentName Name of the component for error messages.
+ * @param {object} propTypes Map of prop name to a ReactPropType
+ * @param {object} props
+ * @param {string} location e.g. "prop", "context", "child context"
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">checkPropTypes</span><span class="params">(componentName, propTypes, props, location)</span> {</span>
+  <span class="keyword">for</span> (<span class="keyword">var</span> propName <span class="keyword">in</span> propTypes) {
+    <span class="keyword">if</span> (propTypes.hasOwnProperty(propName)) {
+      <span class="keyword">var</span> error;
+      <span class="comment">// Prop type validation may throw. In case they do, we don't want to</span>
+      <span class="comment">// fail the render phase where it didn't fail before. So we log it.</span>
+      <span class="comment">// After these have been cleaned up, we'll let them throw.</span>
+      <span class="keyword">try</span> {
+        <span class="comment">// This is intentionally an invariant that gets caught. It's the same</span>
+        <span class="comment">// behavior as without this statement except with a better message.</span>
+        !(<span class="keyword">typeof</span> propTypes[propName] === <span class="string">'function'</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'%s: %s type `%s` is invalid; it must be a function, usually from '</span> + <span class="string">'React.PropTypes.'</span>, componentName || <span class="string">'React class'</span>, ReactPropTypeLocationNames[location], propName) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+        error = propTypes[propName](props, propName, componentName, location);
+      } <span class="keyword">catch</span> (ex) {
+        error = ex;
+      }
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(!error || error <span class="keyword">instanceof</span> Error, <span class="string">'%s: type specification of %s `%s` is invalid; the type checker '</span> + <span class="string">'function must return `null` or an `Error` but returned a %s. '</span> + <span class="string">'You may have forgotten to pass an argument to the type checker '</span> + <span class="string">'creator (arrayOf, instanceOf, objectOf, oneOf, oneOfType, and '</span> + <span class="string">'shape all require an argument).'</span>, componentName || <span class="string">'React class'</span>, ReactPropTypeLocationNames[location], propName, <span class="keyword">typeof</span> error) : <span class="literal">undefined</span>;
+      <span class="keyword">if</span> (error <span class="keyword">instanceof</span> Error &amp;&amp; !(error.message <span class="keyword">in</span> loggedTypeFailures)) {
+        <span class="comment">// Only monitor this failure once because there tends to be a lot of the</span>
+        <span class="comment">// same error.</span>
+        loggedTypeFailures[error.message] = <span class="literal">true</span>;
+
+        <span class="keyword">var</span> addendum = getDeclarationErrorAddendum();
+        process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'Failed propType: %s%s'</span>, error.message, addendum) : <span class="literal">undefined</span>;
+      }
+    }
+  }
+}
+
+<span class="comment">/**
+ * Given an element, validate that its props follow the propTypes definition,
+ * provided by the type.
+ *
+ * @param {ReactElement} element
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">validatePropTypes</span><span class="params">(element)</span> {</span>
+  <span class="keyword">var</span> componentClass = element.type;
+  <span class="keyword">if</span> (<span class="keyword">typeof</span> componentClass !== <span class="string">'function'</span>) {
+    <span class="keyword">return</span>;
+  }
+  <span class="keyword">var</span> name = componentClass.displayName || componentClass.name;
+  <span class="keyword">if</span> (componentClass.propTypes) {
+    checkPropTypes(name, componentClass.propTypes, element.props, ReactPropTypeLocations.prop);
+  }
+  <span class="keyword">if</span> (<span class="keyword">typeof</span> componentClass.getDefaultProps === <span class="string">'function'</span>) {
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(componentClass.getDefaultProps.isReactClassApproved, <span class="string">'getDefaultProps is only used on classic React.createClass '</span> + <span class="string">'definitions. Use a static property named `defaultProps` instead.'</span>) : <span class="literal">undefined</span>;
+  }
+}
+
+<span class="keyword">var</span> ReactElementValidator = {
+
+  createElement: <span class="function"><span class="keyword">function</span> <span class="params">(type, props, children)</span> {</span>
+    <span class="keyword">var</span> validType = <span class="keyword">typeof</span> type === <span class="string">'string'</span> || <span class="keyword">typeof</span> type === <span class="string">'function'</span>;
+    <span class="comment">// We warn in this case but don't throw. We expect the element creation to</span>
+    <span class="comment">// succeed and there will likely be errors in render.</span>
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(validType, <span class="string">'React.createElement: type should not be null, undefined, boolean, or '</span> + <span class="string">'number. It should be a string (for DOM elements) or a ReactClass '</span> + <span class="string">'(for composite components).%s'</span>, getDeclarationErrorAddendum()) : <span class="literal">undefined</span>;
+
+    <span class="keyword">var</span> element = ReactElement.createElement.apply(<span class="keyword">this</span>, arguments);
+
+    <span class="comment">// The result can be nullish if a mock or a custom function is used.</span>
+    <span class="comment">// TODO: Drop this when these are no longer allowed as the type argument.</span>
+    <span class="keyword">if</span> (element == <span class="literal">null</span>) {
+      <span class="keyword">return</span> element;
+    }
+
+    <span class="comment">// Skip key warning if the type isn't valid since our key validation logic</span>
+    <span class="comment">// doesn't expect a non-string/function type and can throw confusing errors.</span>
+    <span class="comment">// We don't want exception behavior to differ between dev and prod.</span>
+    <span class="comment">// (Rendering will throw with a helpful message and as soon as the type is</span>
+    <span class="comment">// fixed, the key warnings will appear.)</span>
+    <span class="keyword">if</span> (validType) {
+      <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">2</span>; i &lt; arguments.length; i++) {
+        validateChildKeys(arguments[i], type);
+      }
+    }
+
+    validatePropTypes(element);
+
+    <span class="keyword">return</span> element;
+  },
+
+  createFactory: <span class="function"><span class="keyword">function</span> <span class="params">(type)</span> {</span>
+    <span class="keyword">var</span> validatedFactory = ReactElementValidator.createElement.bind(<span class="literal">null</span>, type);
+    <span class="comment">// Legacy hook TODO: Warn if this is accessed</span>
+    validatedFactory.type = type;
+
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      <span class="keyword">if</span> (canDefineProperty) {
+        Object.defineProperty(validatedFactory, <span class="string">'type'</span>, {
+          enumerable: <span class="literal">false</span>,
+          get: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+            process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'Factory.type is deprecated. Access the class directly '</span> + <span class="string">'before passing it to createFactory.'</span>) : <span class="literal">undefined</span>;
+            Object.defineProperty(<span class="keyword">this</span>, <span class="string">'type'</span>, {
+              value: type
+            });
+            <span class="keyword">return</span> type;
+          }
+        });
+      }
+    }
+
+    <span class="keyword">return</span> validatedFactory;
+  },
+
+  cloneElement: <span class="function"><span class="keyword">function</span> <span class="params">(element, props, children)</span> {</span>
+    <span class="keyword">var</span> newElement = ReactElement.cloneElement.apply(<span class="keyword">this</span>, arguments);
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">2</span>; i &lt; arguments.length; i++) {
+      validateChildKeys(arguments[i], newElement.type);
+    }
+    validatePropTypes(newElement);
+    <span class="keyword">return</span> newElement;
+  }
+
+};
+
+module.exports = ReactElementValidator;</code></pre>

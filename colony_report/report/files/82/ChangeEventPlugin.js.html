@@ -1,0 +1,326 @@
+<h1>ChangeEventPlugin.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ChangeEventPlugin
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> EventConstants = require(<span class="string">'./EventConstants'</span>);
+<span class="keyword">var</span> EventPluginHub = require(<span class="string">'./EventPluginHub'</span>);
+<span class="keyword">var</span> EventPropagators = require(<span class="string">'./EventPropagators'</span>);
+<span class="keyword">var</span> ExecutionEnvironment = require(<span class="string">'fbjs/lib/ExecutionEnvironment'</span>);
+<span class="keyword">var</span> ReactDOMComponentTree = require(<span class="string">'./ReactDOMComponentTree'</span>);
+<span class="keyword">var</span> ReactUpdates = require(<span class="string">'./ReactUpdates'</span>);
+<span class="keyword">var</span> SyntheticEvent = require(<span class="string">'./SyntheticEvent'</span>);
+
+<span class="keyword">var</span> getEventTarget = require(<span class="string">'./getEventTarget'</span>);
+<span class="keyword">var</span> isEventSupported = require(<span class="string">'./isEventSupported'</span>);
+<span class="keyword">var</span> isTextInputElement = require(<span class="string">'./isTextInputElement'</span>);
+<span class="keyword">var</span> keyOf = require(<span class="string">'fbjs/lib/keyOf'</span>);
+
+<span class="keyword">var</span> topLevelTypes = EventConstants.topLevelTypes;
+
+<span class="keyword">var</span> eventTypes = {
+  change: {
+    phasedRegistrationNames: {
+      bubbled: keyOf({ onChange: <span class="literal">null</span> }),
+      captured: keyOf({ onChangeCapture: <span class="literal">null</span> })
+    },
+    dependencies: [topLevelTypes.topBlur, topLevelTypes.topChange, topLevelTypes.topClick, topLevelTypes.topFocus, topLevelTypes.topInput, topLevelTypes.topKeyDown, topLevelTypes.topKeyUp, topLevelTypes.topSelectionChange]
+  }
+};
+
+<span class="comment">/**
+ * For IE shims
+ */</span>
+<span class="keyword">var</span> activeElement = <span class="literal">null</span>;
+<span class="keyword">var</span> activeElementInst = <span class="literal">null</span>;
+<span class="keyword">var</span> activeElementValue = <span class="literal">null</span>;
+<span class="keyword">var</span> activeElementValueProp = <span class="literal">null</span>;
+
+<span class="comment">/**
+ * SECTION: handle `change` event
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">shouldUseChangeEvent</span><span class="params">(elem)</span> {</span>
+  <span class="keyword">var</span> nodeName = elem.nodeName &amp;&amp; elem.nodeName.toLowerCase();
+  <span class="keyword">return</span> nodeName === <span class="string">'select'</span> || nodeName === <span class="string">'input'</span> &amp;&amp; elem.type === <span class="string">'file'</span>;
+}
+
+<span class="keyword">var</span> doesChangeEventBubble = <span class="literal">false</span>;
+<span class="keyword">if</span> (ExecutionEnvironment.canUseDOM) {
+  <span class="comment">// See `handleChange` comment below</span>
+  doesChangeEventBubble = isEventSupported(<span class="string">'change'</span>) &amp;&amp; (!(<span class="string">'documentMode'</span> <span class="keyword">in</span> document) || document.documentMode > <span class="number">8</span>);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">manualDispatchChangeEvent</span><span class="params">(nativeEvent)</span> {</span>
+  <span class="keyword">var</span> event = SyntheticEvent.getPooled(eventTypes.change, activeElementInst, nativeEvent, getEventTarget(nativeEvent));
+  EventPropagators.accumulateTwoPhaseDispatches(event);
+
+  <span class="comment">// If change and propertychange bubbled, we'd just bind to it like all the</span>
+  <span class="comment">// other events and have it go through ReactBrowserEventEmitter. Since it</span>
+  <span class="comment">// doesn't, we manually listen for the events and so we have to enqueue and</span>
+  <span class="comment">// process the abstract event manually.</span>
+  <span class="comment">//</span>
+  <span class="comment">// Batching is necessary here in order to ensure that all event handlers run</span>
+  <span class="comment">// before the next rerender (including event handlers attached to ancestor</span>
+  <span class="comment">// elements instead of directly on the input). Without this, controlled</span>
+  <span class="comment">// components don't work properly in conjunction with event bubbling because</span>
+  <span class="comment">// the component is rerendered and the value reverted before all the event</span>
+  <span class="comment">// handlers can run. See https://github.com/facebook/react/issues/708.</span>
+  ReactUpdates.batchedUpdates(runEventInBatch, event);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">runEventInBatch</span><span class="params">(event)</span> {</span>
+  EventPluginHub.enqueueEvents(event);
+  EventPluginHub.processEventQueue(<span class="literal">false</span>);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">startWatchingForChangeEventIE8</span><span class="params">(target, targetInst)</span> {</span>
+  activeElement = target;
+  activeElementInst = targetInst;
+  activeElement.attachEvent(<span class="string">'onchange'</span>, manualDispatchChangeEvent);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">stopWatchingForChangeEventIE8</span><span class="params">()</span> {</span>
+  <span class="keyword">if</span> (!activeElement) {
+    <span class="keyword">return</span>;
+  }
+  activeElement.detachEvent(<span class="string">'onchange'</span>, manualDispatchChangeEvent);
+  activeElement = <span class="literal">null</span>;
+  activeElementInst = <span class="literal">null</span>;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">getTargetInstForChangeEvent</span><span class="params">(topLevelType, targetInst)</span> {</span>
+  <span class="keyword">if</span> (topLevelType === topLevelTypes.topChange) {
+    <span class="keyword">return</span> targetInst;
+  }
+}
+<span class="function"><span class="keyword">function</span> <span class="title">handleEventsForChangeEventIE8</span><span class="params">(topLevelType, target, targetInst)</span> {</span>
+  <span class="keyword">if</span> (topLevelType === topLevelTypes.topFocus) {
+    <span class="comment">// stopWatching() should be a noop here but we call it just in case we</span>
+    <span class="comment">// missed a blur event somehow.</span>
+    stopWatchingForChangeEventIE8();
+    startWatchingForChangeEventIE8(target, targetInst);
+  } <span class="keyword">else</span> <span class="keyword">if</span> (topLevelType === topLevelTypes.topBlur) {
+    stopWatchingForChangeEventIE8();
+  }
+}
+
+<span class="comment">/**
+ * SECTION: handle `input` event
+ */</span>
+<span class="keyword">var</span> isInputEventSupported = <span class="literal">false</span>;
+<span class="keyword">if</span> (ExecutionEnvironment.canUseDOM) {
+  <span class="comment">// IE9 claims to support the input event but fails to trigger it when</span>
+  <span class="comment">// deleting text, so we ignore its input events.</span>
+  <span class="comment">// IE10+ fire input events to often, such when a placeholder</span>
+  <span class="comment">// changes or when an input with a placeholder is focused.</span>
+  isInputEventSupported = isEventSupported(<span class="string">'input'</span>) &amp;&amp; (!(<span class="string">'documentMode'</span> <span class="keyword">in</span> document) || document.documentMode > <span class="number">11</span>);
+}
+
+<span class="comment">/**
+ * (For IE &lt;=11) Replacement getter/setter for the `value` property that gets
+ * set on the active element.
+ */</span>
+<span class="keyword">var</span> newValueProp = {
+  get: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> activeElementValueProp.get.call(<span class="keyword">this</span>);
+  },
+  set: <span class="function"><span class="keyword">function</span> <span class="params">(val)</span> {</span>
+    <span class="comment">// Cast to a string so we can do equality checks.</span>
+    activeElementValue = <span class="string">''</span> + val;
+    activeElementValueProp.set.call(<span class="keyword">this</span>, val);
+  }
+};
+
+<span class="comment">/**
+ * (For IE &lt;=11) Starts tracking propertychange events on the passed-in element
+ * and override the value property so that we can distinguish user events from
+ * value changes in JS.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">startWatchingForValueChange</span><span class="params">(target, targetInst)</span> {</span>
+  activeElement = target;
+  activeElementInst = targetInst;
+  activeElementValue = target.value;
+  activeElementValueProp = Object.getOwnPropertyDescriptor(target.constructor.prototype, <span class="string">'value'</span>);
+
+  <span class="comment">// Not guarded in a canDefineProperty check: IE8 supports defineProperty only</span>
+  <span class="comment">// on DOM elements</span>
+  Object.defineProperty(activeElement, <span class="string">'value'</span>, newValueProp);
+  <span class="keyword">if</span> (activeElement.attachEvent) {
+    activeElement.attachEvent(<span class="string">'onpropertychange'</span>, handlePropertyChange);
+  } <span class="keyword">else</span> {
+    activeElement.addEventListener(<span class="string">'propertychange'</span>, handlePropertyChange, <span class="literal">false</span>);
+  }
+}
+
+<span class="comment">/**
+ * (For IE &lt;=11) Removes the event listeners from the currently-tracked element,
+ * if any exists.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">stopWatchingForValueChange</span><span class="params">()</span> {</span>
+  <span class="keyword">if</span> (!activeElement) {
+    <span class="keyword">return</span>;
+  }
+
+  <span class="comment">// delete restores the original property definition</span>
+  <span class="keyword">delete</span> activeElement.value;
+
+  <span class="keyword">if</span> (activeElement.detachEvent) {
+    activeElement.detachEvent(<span class="string">'onpropertychange'</span>, handlePropertyChange);
+  } <span class="keyword">else</span> {
+    activeElement.removeEventListener(<span class="string">'propertychange'</span>, handlePropertyChange, <span class="literal">false</span>);
+  }
+
+  activeElement = <span class="literal">null</span>;
+  activeElementInst = <span class="literal">null</span>;
+  activeElementValue = <span class="literal">null</span>;
+  activeElementValueProp = <span class="literal">null</span>;
+}
+
+<span class="comment">/**
+ * (For IE &lt;=11) Handles a propertychange event, sending a `change` event if
+ * the value of the active element has changed.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">handlePropertyChange</span><span class="params">(nativeEvent)</span> {</span>
+  <span class="keyword">if</span> (nativeEvent.propertyName !== <span class="string">'value'</span>) {
+    <span class="keyword">return</span>;
+  }
+  <span class="keyword">var</span> value = nativeEvent.srcElement.value;
+  <span class="keyword">if</span> (value === activeElementValue) {
+    <span class="keyword">return</span>;
+  }
+  activeElementValue = value;
+
+  manualDispatchChangeEvent(nativeEvent);
+}
+
+<span class="comment">/**
+ * If a `change` event should be fired, returns the target's ID.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getTargetInstForInputEvent</span><span class="params">(topLevelType, targetInst)</span> {</span>
+  <span class="keyword">if</span> (topLevelType === topLevelTypes.topInput) {
+    <span class="comment">// In modern browsers (i.e., not IE8 or IE9), the input event is exactly</span>
+    <span class="comment">// what we want so fall through here and trigger an abstract event</span>
+    <span class="keyword">return</span> targetInst;
+  }
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">handleEventsForInputEventIE</span><span class="params">(topLevelType, target, targetInst)</span> {</span>
+  <span class="keyword">if</span> (topLevelType === topLevelTypes.topFocus) {
+    <span class="comment">// In IE8, we can capture almost all .value changes by adding a</span>
+    <span class="comment">// propertychange handler and looking for events with propertyName</span>
+    <span class="comment">// equal to 'value'</span>
+    <span class="comment">// In IE9-11, propertychange fires for most input events but is buggy and</span>
+    <span class="comment">// doesn't fire when text is deleted, but conveniently, selectionchange</span>
+    <span class="comment">// appears to fire in all of the remaining cases so we catch those and</span>
+    <span class="comment">// forward the event if the value has changed</span>
+    <span class="comment">// In either case, we don't want to call the event handler if the value</span>
+    <span class="comment">// is changed from JS so we redefine a setter for `.value` that updates</span>
+    <span class="comment">// our activeElementValue variable, allowing us to ignore those changes</span>
+    <span class="comment">//</span>
+    <span class="comment">// stopWatching() should be a noop here but we call it just in case we</span>
+    <span class="comment">// missed a blur event somehow.</span>
+    stopWatchingForValueChange();
+    startWatchingForValueChange(target, targetInst);
+  } <span class="keyword">else</span> <span class="keyword">if</span> (topLevelType === topLevelTypes.topBlur) {
+    stopWatchingForValueChange();
+  }
+}
+
+<span class="comment">// For IE8 and IE9.</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getTargetInstForInputEventIE</span><span class="params">(topLevelType, targetInst)</span> {</span>
+  <span class="keyword">if</span> (topLevelType === topLevelTypes.topSelectionChange || topLevelType === topLevelTypes.topKeyUp || topLevelType === topLevelTypes.topKeyDown) {
+    <span class="comment">// On the selectionchange event, the target is just document which isn't</span>
+    <span class="comment">// helpful for us so just check activeElement instead.</span>
+    <span class="comment">//</span>
+    <span class="comment">// 99% of the time, keydown and keyup aren't necessary. IE8 fails to fire</span>
+    <span class="comment">// propertychange on the first input event after setting `value` from a</span>
+    <span class="comment">// script and fires only keydown, keypress, keyup. Catching keyup usually</span>
+    <span class="comment">// gets it and catching keydown lets us fire an event for the first</span>
+    <span class="comment">// keystroke if user does a key repeat (it'll be a little delayed: right</span>
+    <span class="comment">// before the second keystroke). Other input methods (e.g., paste) seem to</span>
+    <span class="comment">// fire selectionchange normally.</span>
+    <span class="keyword">if</span> (activeElement &amp;&amp; activeElement.value !== activeElementValue) {
+      activeElementValue = activeElement.value;
+      <span class="keyword">return</span> activeElementInst;
+    }
+  }
+}
+
+<span class="comment">/**
+ * SECTION: handle `click` event
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">shouldUseClickEvent</span><span class="params">(elem)</span> {</span>
+  <span class="comment">// Use the `click` event to detect changes to checkbox and radio inputs.</span>
+  <span class="comment">// This approach works across all browsers, whereas `change` does not fire</span>
+  <span class="comment">// until `blur` in IE8.</span>
+  <span class="keyword">return</span> elem.nodeName &amp;&amp; elem.nodeName.toLowerCase() === <span class="string">'input'</span> &amp;&amp; (elem.type === <span class="string">'checkbox'</span> || elem.type === <span class="string">'radio'</span>);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">getTargetInstForClickEvent</span><span class="params">(topLevelType, targetInst)</span> {</span>
+  <span class="keyword">if</span> (topLevelType === topLevelTypes.topClick) {
+    <span class="keyword">return</span> targetInst;
+  }
+}
+
+<span class="comment">/**
+ * This plugin creates an `onChange` event that normalizes change events
+ * across form elements. This event fires at a time when it's possible to
+ * change the element's value without seeing a flicker.
+ *
+ * Supported elements are:
+ * - input (see `isTextInputElement`)
+ * - textarea
+ * - select
+ */</span>
+<span class="keyword">var</span> ChangeEventPlugin = {
+
+  eventTypes: eventTypes,
+
+  extractEvents: <span class="function"><span class="keyword">function</span> <span class="params">(topLevelType, targetInst, nativeEvent, nativeEventTarget)</span> {</span>
+    <span class="keyword">var</span> targetNode = targetInst ? ReactDOMComponentTree.getNodeFromInstance(targetInst) : window;
+
+    <span class="keyword">var</span> getTargetInstFunc, handleEventFunc;
+    <span class="keyword">if</span> (shouldUseChangeEvent(targetNode)) {
+      <span class="keyword">if</span> (doesChangeEventBubble) {
+        getTargetInstFunc = getTargetInstForChangeEvent;
+      } <span class="keyword">else</span> {
+        handleEventFunc = handleEventsForChangeEventIE8;
+      }
+    } <span class="keyword">else</span> <span class="keyword">if</span> (isTextInputElement(targetNode)) {
+      <span class="keyword">if</span> (isInputEventSupported) {
+        getTargetInstFunc = getTargetInstForInputEvent;
+      } <span class="keyword">else</span> {
+        getTargetInstFunc = getTargetInstForInputEventIE;
+        handleEventFunc = handleEventsForInputEventIE;
+      }
+    } <span class="keyword">else</span> <span class="keyword">if</span> (shouldUseClickEvent(targetNode)) {
+      getTargetInstFunc = getTargetInstForClickEvent;
+    }
+
+    <span class="keyword">if</span> (getTargetInstFunc) {
+      <span class="keyword">var</span> inst = getTargetInstFunc(topLevelType, targetInst);
+      <span class="keyword">if</span> (inst) {
+        <span class="keyword">var</span> event = SyntheticEvent.getPooled(eventTypes.change, inst, nativeEvent, nativeEventTarget);
+        event.type = <span class="string">'change'</span>;
+        EventPropagators.accumulateTwoPhaseDispatches(event);
+        <span class="keyword">return</span> event;
+      }
+    }
+
+    <span class="keyword">if</span> (handleEventFunc) {
+      handleEventFunc(topLevelType, targetNode, targetInst);
+    }
+  }
+
+};
+
+module.exports = ChangeEventPlugin;</code></pre>

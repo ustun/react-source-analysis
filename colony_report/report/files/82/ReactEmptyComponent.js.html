@@ -1,0 +1,49 @@
+<h1>ReactEmptyComponent.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2014-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactEmptyComponent
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactElement = require(<span class="string">'./ReactElement'</span>);
+<span class="keyword">var</span> ReactReconciler = require(<span class="string">'./ReactReconciler'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+
+<span class="keyword">var</span> placeholderElement;
+
+<span class="keyword">var</span> ReactEmptyComponentInjection = {
+  injectEmptyComponent: <span class="function"><span class="keyword">function</span> <span class="params">(component)</span> {</span>
+    placeholderElement = ReactElement.createElement(component);
+  }
+};
+
+<span class="keyword">var</span> ReactEmptyComponent = <span class="function"><span class="keyword">function</span> <span class="params">(instantiate)</span> {</span>
+  <span class="keyword">this</span>._currentElement = <span class="literal">null</span>;
+  <span class="keyword">this</span>._renderedComponent = instantiate(placeholderElement);
+};
+assign(ReactEmptyComponent.prototype, {
+  construct: <span class="function"><span class="keyword">function</span> <span class="params">(element)</span> {</span>},
+  mountComponent: <span class="function"><span class="keyword">function</span> <span class="params">(transaction, nativeParent, nativeContainerInfo, context)</span> {</span>
+    <span class="keyword">return</span> ReactReconciler.mountComponent(<span class="keyword">this</span>._renderedComponent, transaction, nativeParent, nativeContainerInfo, context);
+  },
+  receiveComponent: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>},
+  getNativeNode: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> ReactReconciler.getNativeNode(<span class="keyword">this</span>._renderedComponent);
+  },
+  unmountComponent: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    ReactReconciler.unmountComponent(<span class="keyword">this</span>._renderedComponent);
+    <span class="keyword">this</span>._renderedComponent = <span class="literal">null</span>;
+  }
+});
+
+ReactEmptyComponent.injection = ReactEmptyComponentInjection;
+
+module.exports = ReactEmptyComponent;</code></pre>

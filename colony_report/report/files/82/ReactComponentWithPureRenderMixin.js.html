@@ -1,0 +1,47 @@
+<h1>ReactComponentWithPureRenderMixin.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactComponentWithPureRenderMixin
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> shallowCompare = require(<span class="string">'./shallowCompare'</span>);
+
+<span class="comment">/**
+ * If your React component's render function is "pure", e.g. it will render the
+ * same result given the same props and state, provide this Mixin for a
+ * considerable performance boost.
+ *
+ * Most React components have pure render functions.
+ *
+ * Example:
+ *
+ *   var ReactComponentWithPureRenderMixin =
+ *     require('ReactComponentWithPureRenderMixin');
+ *   React.createClass({
+ *     mixins: [ReactComponentWithPureRenderMixin],
+ *
+ *     render: function() {
+ *       return &lt;div className={this.props.className}>foo&lt;/div>;
+ *     }
+ *   });
+ *
+ * Note: This only checks shallow equality for props and state. If these contain
+ * complex data structures this mixin may have false-negatives for deeper
+ * differences. Only mixin to components which have simple props and state, or
+ * use `forceUpdate()` when you know deep data structures have changed.
+ */</span>
+<span class="keyword">var</span> ReactComponentWithPureRenderMixin = {
+  shouldComponentUpdate: <span class="function"><span class="keyword">function</span> <span class="params">(nextProps, nextState)</span> {</span>
+    <span class="keyword">return</span> shallowCompare(<span class="keyword">this</span>, nextProps, nextState);
+  }
+};
+
+module.exports = ReactComponentWithPureRenderMixin;</code></pre>

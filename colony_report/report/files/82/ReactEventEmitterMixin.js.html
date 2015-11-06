@@ -1,0 +1,34 @@
+<h1>ReactEventEmitterMixin.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactEventEmitterMixin
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> EventPluginHub = require(<span class="string">'./EventPluginHub'</span>);
+
+<span class="function"><span class="keyword">function</span> <span class="title">runEventQueueInBatch</span><span class="params">(events)</span> {</span>
+  EventPluginHub.enqueueEvents(events);
+  EventPluginHub.processEventQueue(<span class="literal">false</span>);
+}
+
+<span class="keyword">var</span> ReactEventEmitterMixin = {
+
+  <span class="comment">/**
+   * Streams a fired top-level event to `EventPluginHub` where plugins have the
+   * opportunity to create `ReactEvent`s to be dispatched.
+   */</span>
+  handleTopLevel: <span class="function"><span class="keyword">function</span> <span class="params">(topLevelType, targetInst, nativeEvent, nativeEventTarget)</span> {</span>
+    <span class="keyword">var</span> events = EventPluginHub.extractEvents(topLevelType, targetInst, nativeEvent, nativeEventTarget);
+    runEventQueueInBatch(events);
+  }
+};
+
+module.exports = ReactEventEmitterMixin;</code></pre>

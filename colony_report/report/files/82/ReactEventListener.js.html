@@ -1,0 +1,158 @@
+<h1>ReactEventListener.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactEventListener
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> EventListener = require(<span class="string">'fbjs/lib/EventListener'</span>);
+<span class="keyword">var</span> ExecutionEnvironment = require(<span class="string">'fbjs/lib/ExecutionEnvironment'</span>);
+<span class="keyword">var</span> PooledClass = require(<span class="string">'./PooledClass'</span>);
+<span class="keyword">var</span> ReactDOMComponentTree = require(<span class="string">'./ReactDOMComponentTree'</span>);
+<span class="keyword">var</span> ReactUpdates = require(<span class="string">'./ReactUpdates'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> getEventTarget = require(<span class="string">'./getEventTarget'</span>);
+<span class="keyword">var</span> getUnboundedScrollPosition = require(<span class="string">'fbjs/lib/getUnboundedScrollPosition'</span>);
+
+<span class="comment">/**
+ * Find the deepest React component completely containing the root of the
+ * passed-in instance (for use when entire React trees are nested within each
+ * other). If React trees are not nested, returns null.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">findParent</span><span class="params">(inst)</span> {</span>
+  <span class="comment">// TODO: It may be a good idea to cache this to prevent unnecessary DOM</span>
+  <span class="comment">// traversal, but caching is difficult to do correctly without using a</span>
+  <span class="comment">// mutation observer to listen for all DOM changes.</span>
+  <span class="keyword">while</span> (inst._nativeParent) {
+    inst = inst._nativeParent;
+  }
+  <span class="keyword">var</span> rootNode = ReactDOMComponentTree.getNodeFromInstance(inst);
+  <span class="keyword">var</span> container = rootNode.parentNode;
+  <span class="keyword">return</span> ReactDOMComponentTree.getClosestInstanceFromNode(container);
+}
+
+<span class="comment">// Used to store ancestor hierarchy in top level callback</span>
+<span class="function"><span class="keyword">function</span> <span class="title">TopLevelCallbackBookKeeping</span><span class="params">(topLevelType, nativeEvent)</span> {</span>
+  <span class="keyword">this</span>.topLevelType = topLevelType;
+  <span class="keyword">this</span>.nativeEvent = nativeEvent;
+  <span class="keyword">this</span>.ancestors = [];
+}
+assign(TopLevelCallbackBookKeeping.prototype, {
+  destructor: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">this</span>.topLevelType = <span class="literal">null</span>;
+    <span class="keyword">this</span>.nativeEvent = <span class="literal">null</span>;
+    <span class="keyword">this</span>.ancestors.length = <span class="number">0</span>;
+  }
+});
+PooledClass.addPoolingTo(TopLevelCallbackBookKeeping, PooledClass.twoArgumentPooler);
+
+<span class="function"><span class="keyword">function</span> <span class="title">handleTopLevelImpl</span><span class="params">(bookKeeping)</span> {</span>
+  <span class="keyword">var</span> nativeEventTarget = getEventTarget(bookKeeping.nativeEvent);
+  <span class="keyword">var</span> targetInst = ReactDOMComponentTree.getClosestInstanceFromNode(nativeEventTarget);
+
+  <span class="comment">// Loop through the hierarchy, in case there's any nested components.</span>
+  <span class="comment">// It's important that we build the array of ancestors before calling any</span>
+  <span class="comment">// event handlers, because event handlers can modify the DOM, leading to</span>
+  <span class="comment">// inconsistencies with ReactMount's node cache. See #1105.</span>
+  <span class="keyword">var</span> ancestor = targetInst;
+  <span class="keyword">do</span> {
+    bookKeeping.ancestors.push(ancestor);
+    ancestor = ancestor &amp;&amp; findParent(ancestor);
+  } <span class="keyword">while</span> (ancestor);
+
+  <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; bookKeeping.ancestors.length; i++) {
+    targetInst = bookKeeping.ancestors[i];
+    ReactEventListener._handleTopLevel(bookKeeping.topLevelType, targetInst, bookKeeping.nativeEvent, getEventTarget(bookKeeping.nativeEvent));
+  }
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">scrollValueMonitor</span><span class="params">(cb)</span> {</span>
+  <span class="keyword">var</span> scrollPosition = getUnboundedScrollPosition(window);
+  cb(scrollPosition);
+}
+
+<span class="keyword">var</span> ReactEventListener = {
+  _enabled: <span class="literal">true</span>,
+  _handleTopLevel: <span class="literal">null</span>,
+
+  WINDOW_HANDLE: ExecutionEnvironment.canUseDOM ? window : <span class="literal">null</span>,
+
+  setHandleTopLevel: <span class="function"><span class="keyword">function</span> <span class="params">(handleTopLevel)</span> {</span>
+    ReactEventListener._handleTopLevel = handleTopLevel;
+  },
+
+  setEnabled: <span class="function"><span class="keyword">function</span> <span class="params">(enabled)</span> {</span>
+    ReactEventListener._enabled = !!enabled;
+  },
+
+  isEnabled: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> ReactEventListener._enabled;
+  },
+
+  <span class="comment">/**
+   * Traps top-level events by using event bubbling.
+   *
+   * @param {string} topLevelType Record from `EventConstants`.
+   * @param {string} handlerBaseName Event name (e.g. "click").
+   * @param {object} handle Element on which to attach listener.
+   * @return {?object} An object with a remove function which will forcefully
+   *                  remove the listener.
+   * @internal
+   */</span>
+  trapBubbledEvent: <span class="function"><span class="keyword">function</span> <span class="params">(topLevelType, handlerBaseName, handle)</span> {</span>
+    <span class="keyword">var</span> element = handle;
+    <span class="keyword">if</span> (!element) {
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    }
+    <span class="keyword">return</span> EventListener.listen(element, handlerBaseName, ReactEventListener.dispatchEvent.bind(<span class="literal">null</span>, topLevelType));
+  },
+
+  <span class="comment">/**
+   * Traps a top-level event by using event capturing.
+   *
+   * @param {string} topLevelType Record from `EventConstants`.
+   * @param {string} handlerBaseName Event name (e.g. "click").
+   * @param {object} handle Element on which to attach listener.
+   * @return {?object} An object with a remove function which will forcefully
+   *                  remove the listener.
+   * @internal
+   */</span>
+  trapCapturedEvent: <span class="function"><span class="keyword">function</span> <span class="params">(topLevelType, handlerBaseName, handle)</span> {</span>
+    <span class="keyword">var</span> element = handle;
+    <span class="keyword">if</span> (!element) {
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    }
+    <span class="keyword">return</span> EventListener.capture(element, handlerBaseName, ReactEventListener.dispatchEvent.bind(<span class="literal">null</span>, topLevelType));
+  },
+
+  monitorScrollValue: <span class="function"><span class="keyword">function</span> <span class="params">(refresh)</span> {</span>
+    <span class="keyword">var</span> callback = scrollValueMonitor.bind(<span class="literal">null</span>, refresh);
+    EventListener.listen(window, <span class="string">'scroll'</span>, callback);
+  },
+
+  dispatchEvent: <span class="function"><span class="keyword">function</span> <span class="params">(topLevelType, nativeEvent)</span> {</span>
+    <span class="keyword">if</span> (!ReactEventListener._enabled) {
+      <span class="keyword">return</span>;
+    }
+
+    <span class="keyword">var</span> bookKeeping = TopLevelCallbackBookKeeping.getPooled(topLevelType, nativeEvent);
+    <span class="keyword">try</span> {
+      <span class="comment">// Event queue being processed in the same cycle allows</span>
+      <span class="comment">// `preventDefault`.</span>
+      ReactUpdates.batchedUpdates(handleTopLevelImpl, bookKeeping);
+    } <span class="keyword">finally</span> {
+      TopLevelCallbackBookKeeping.release(bookKeeping);
+    }
+  }
+};
+
+module.exports = ReactEventListener;</code></pre>

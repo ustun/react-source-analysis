@@ -1,0 +1,113 @@
+<h1>instantiateReactComponent.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule instantiateReactComponent
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactCompositeComponent = require(<span class="string">'./ReactCompositeComponent'</span>);
+<span class="keyword">var</span> ReactEmptyComponent = require(<span class="string">'./ReactEmptyComponent'</span>);
+<span class="keyword">var</span> ReactNativeComponent = require(<span class="string">'./ReactNativeComponent'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="comment">// To avoid a cyclic dependency, we create the final class in this module</span>
+<span class="keyword">var</span> ReactCompositeComponentWrapper = <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>};
+assign(ReactCompositeComponentWrapper.prototype, ReactCompositeComponent.Mixin, {
+  _instantiateReactComponent: instantiateReactComponent
+});
+
+<span class="function"><span class="keyword">function</span> <span class="title">getDeclarationErrorAddendum</span><span class="params">(owner)</span> {</span>
+  <span class="keyword">if</span> (owner) {
+    <span class="keyword">var</span> name = owner.getName();
+    <span class="keyword">if</span> (name) {
+      <span class="keyword">return</span> <span class="string">' Check the render method of `'</span> + name + <span class="string">'`.'</span>;
+    }
+  }
+  <span class="keyword">return</span> <span class="string">''</span>;
+}
+
+<span class="comment">/**
+ * Check if the type reference is a known internal type. I.e. not a user
+ * provided composite type.
+ *
+ * @param {function} type
+ * @return {boolean} Returns true if this is a valid internal type.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">isInternalComponentType</span><span class="params">(type)</span> {</span>
+  <span class="keyword">return</span> <span class="keyword">typeof</span> type === <span class="string">'function'</span> &amp;&amp; <span class="keyword">typeof</span> type.prototype !== <span class="string">'undefined'</span> &amp;&amp; <span class="keyword">typeof</span> type.prototype.mountComponent === <span class="string">'function'</span> &amp;&amp; <span class="keyword">typeof</span> type.prototype.receiveComponent === <span class="string">'function'</span>;
+}
+
+<span class="comment">/**
+ * Given a ReactNode, create an instance that will actually be mounted.
+ *
+ * @param {ReactNode} node
+ * @return {object} A new instance of the element's constructor.
+ * @protected
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">instantiateReactComponent</span><span class="params">(node)</span> {</span>
+  <span class="keyword">var</span> instance;
+
+  <span class="keyword">if</span> (node === <span class="literal">null</span> || node === <span class="literal">false</span>) {
+    instance = <span class="keyword">new</span> ReactEmptyComponent(instantiateReactComponent);
+  } <span class="keyword">else</span> <span class="keyword">if</span> (<span class="keyword">typeof</span> node === <span class="string">'object'</span>) {
+    <span class="keyword">var</span> element = node;
+    !(element &amp;&amp; (<span class="keyword">typeof</span> element.type === <span class="string">'function'</span> || <span class="keyword">typeof</span> element.type === <span class="string">'string'</span>)) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Element type is invalid: expected a string (for built-in components) '</span> + <span class="string">'or a class/function (for composite components) but got: %s.%s'</span>, element.type == <span class="literal">null</span> ? element.type : <span class="keyword">typeof</span> element.type, getDeclarationErrorAddendum(element._owner)) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+    <span class="comment">// Special case string values</span>
+    <span class="keyword">if</span> (<span class="keyword">typeof</span> element.type === <span class="string">'string'</span>) {
+      instance = ReactNativeComponent.createInternalComponent(element);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (isInternalComponentType(element.type)) {
+      <span class="comment">// This is temporarily available for custom components that are not string</span>
+      <span class="comment">// representations. I.e. ART. Once those are updated to use the string</span>
+      <span class="comment">// representation, we can drop this code path.</span>
+      instance = <span class="keyword">new</span> element.type(element);
+    } <span class="keyword">else</span> {
+      instance = <span class="keyword">new</span> ReactCompositeComponentWrapper();
+    }
+  } <span class="keyword">else</span> <span class="keyword">if</span> (<span class="keyword">typeof</span> node === <span class="string">'string'</span> || <span class="keyword">typeof</span> node === <span class="string">'number'</span>) {
+    instance = ReactNativeComponent.createInstanceForText(node);
+  } <span class="keyword">else</span> {
+    !<span class="literal">false</span> ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'Encountered invalid React node of type %s'</span>, <span class="keyword">typeof</span> node) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  }
+
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="keyword">typeof</span> instance.construct === <span class="string">'function'</span> &amp;&amp; <span class="keyword">typeof</span> instance.mountComponent === <span class="string">'function'</span> &amp;&amp; <span class="keyword">typeof</span> instance.receiveComponent === <span class="string">'function'</span> &amp;&amp; <span class="keyword">typeof</span> instance.getNativeNode === <span class="string">'function'</span> &amp;&amp; <span class="keyword">typeof</span> instance.unmountComponent === <span class="string">'function'</span>, <span class="string">'Only React Components can be mounted.'</span>) : <span class="literal">undefined</span>;
+  }
+
+  <span class="comment">// Sets up the instance. This can probably just move into the constructor now.</span>
+  instance.construct(node);
+
+  <span class="comment">// These two fields are used by the DOM and ART diffing algorithms</span>
+  <span class="comment">// respectively. Instead of using expandos on components, we should be</span>
+  <span class="comment">// storing the state needed by the diffing algorithms elsewhere.</span>
+  instance._mountIndex = <span class="number">0</span>;
+  instance._mountImage = <span class="literal">null</span>;
+
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    instance._isOwnerNecessary = <span class="literal">false</span>;
+    instance._warnedAboutRefsInRender = <span class="literal">false</span>;
+  }
+
+  <span class="comment">// Internal instances should fully constructed at this point, so they should</span>
+  <span class="comment">// not get any new fields added to them at this point.</span>
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    <span class="keyword">if</span> (Object.preventExtensions) {
+      Object.preventExtensions(instance);
+    }
+  }
+
+  <span class="keyword">return</span> instance;
+}
+
+module.exports = instantiateReactComponent;</code></pre>

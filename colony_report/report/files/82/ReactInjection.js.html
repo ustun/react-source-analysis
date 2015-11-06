@@ -1,0 +1,39 @@
+<h1>ReactInjection.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactInjection
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> DOMProperty = require(<span class="string">'./DOMProperty'</span>);
+<span class="keyword">var</span> EventPluginHub = require(<span class="string">'./EventPluginHub'</span>);
+<span class="keyword">var</span> EventPluginUtils = require(<span class="string">'./EventPluginUtils'</span>);
+<span class="keyword">var</span> ReactComponentEnvironment = require(<span class="string">'./ReactComponentEnvironment'</span>);
+<span class="keyword">var</span> ReactClass = require(<span class="string">'./ReactClass'</span>);
+<span class="keyword">var</span> ReactEmptyComponent = require(<span class="string">'./ReactEmptyComponent'</span>);
+<span class="keyword">var</span> ReactBrowserEventEmitter = require(<span class="string">'./ReactBrowserEventEmitter'</span>);
+<span class="keyword">var</span> ReactNativeComponent = require(<span class="string">'./ReactNativeComponent'</span>);
+<span class="keyword">var</span> ReactPerf = require(<span class="string">'./ReactPerf'</span>);
+<span class="keyword">var</span> ReactUpdates = require(<span class="string">'./ReactUpdates'</span>);
+
+<span class="keyword">var</span> ReactInjection = {
+  Component: ReactComponentEnvironment.injection,
+  Class: ReactClass.injection,
+  DOMProperty: DOMProperty.injection,
+  EmptyComponent: ReactEmptyComponent.injection,
+  EventPluginHub: EventPluginHub.injection,
+  EventPluginUtils: EventPluginUtils.injection,
+  EventEmitter: ReactBrowserEventEmitter.injection,
+  NativeComponent: ReactNativeComponent.injection,
+  Perf: ReactPerf.injection,
+  Updates: ReactUpdates.injection
+};
+
+module.exports = ReactInjection;</code></pre>

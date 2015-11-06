@@ -1,0 +1,128 @@
+<h1>SVGDOMPropertyConfig.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule SVGDOMPropertyConfig
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> DOMProperty = require(<span class="string">'./DOMProperty'</span>);
+
+<span class="keyword">var</span> MUST_USE_ATTRIBUTE = DOMProperty.injection.MUST_USE_ATTRIBUTE;
+
+<span class="keyword">var</span> NS = {
+  xlink: <span class="string">'http://www.w3.org/1999/xlink'</span>,
+  xml: <span class="string">'http://www.w3.org/XML/1998/namespace'</span>
+};
+
+<span class="keyword">var</span> SVGDOMPropertyConfig = {
+  Properties: {
+    clipPath: MUST_USE_ATTRIBUTE,
+    cx: MUST_USE_ATTRIBUTE,
+    cy: MUST_USE_ATTRIBUTE,
+    d: MUST_USE_ATTRIBUTE,
+    dx: MUST_USE_ATTRIBUTE,
+    dy: MUST_USE_ATTRIBUTE,
+    fill: MUST_USE_ATTRIBUTE,
+    fillOpacity: MUST_USE_ATTRIBUTE,
+    fontFamily: MUST_USE_ATTRIBUTE,
+    fontSize: MUST_USE_ATTRIBUTE,
+    fx: MUST_USE_ATTRIBUTE,
+    fy: MUST_USE_ATTRIBUTE,
+    gradientTransform: MUST_USE_ATTRIBUTE,
+    gradientUnits: MUST_USE_ATTRIBUTE,
+    markerEnd: MUST_USE_ATTRIBUTE,
+    markerMid: MUST_USE_ATTRIBUTE,
+    markerStart: MUST_USE_ATTRIBUTE,
+    offset: MUST_USE_ATTRIBUTE,
+    opacity: MUST_USE_ATTRIBUTE,
+    patternContentUnits: MUST_USE_ATTRIBUTE,
+    patternUnits: MUST_USE_ATTRIBUTE,
+    points: MUST_USE_ATTRIBUTE,
+    preserveAspectRatio: MUST_USE_ATTRIBUTE,
+    r: MUST_USE_ATTRIBUTE,
+    rx: MUST_USE_ATTRIBUTE,
+    ry: MUST_USE_ATTRIBUTE,
+    spreadMethod: MUST_USE_ATTRIBUTE,
+    stopColor: MUST_USE_ATTRIBUTE,
+    stopOpacity: MUST_USE_ATTRIBUTE,
+    stroke: MUST_USE_ATTRIBUTE,
+    strokeDasharray: MUST_USE_ATTRIBUTE,
+    strokeLinecap: MUST_USE_ATTRIBUTE,
+    strokeOpacity: MUST_USE_ATTRIBUTE,
+    strokeWidth: MUST_USE_ATTRIBUTE,
+    textAnchor: MUST_USE_ATTRIBUTE,
+    transform: MUST_USE_ATTRIBUTE,
+    version: MUST_USE_ATTRIBUTE,
+    viewBox: MUST_USE_ATTRIBUTE,
+    x1: MUST_USE_ATTRIBUTE,
+    x2: MUST_USE_ATTRIBUTE,
+    x: MUST_USE_ATTRIBUTE,
+    xlinkActuate: MUST_USE_ATTRIBUTE,
+    xlinkArcrole: MUST_USE_ATTRIBUTE,
+    xlinkHref: MUST_USE_ATTRIBUTE,
+    xlinkRole: MUST_USE_ATTRIBUTE,
+    xlinkShow: MUST_USE_ATTRIBUTE,
+    xlinkTitle: MUST_USE_ATTRIBUTE,
+    xlinkType: MUST_USE_ATTRIBUTE,
+    xmlBase: MUST_USE_ATTRIBUTE,
+    xmlLang: MUST_USE_ATTRIBUTE,
+    xmlSpace: MUST_USE_ATTRIBUTE,
+    y1: MUST_USE_ATTRIBUTE,
+    y2: MUST_USE_ATTRIBUTE,
+    y: MUST_USE_ATTRIBUTE
+  },
+  DOMAttributeNamespaces: {
+    xlinkActuate: NS.xlink,
+    xlinkArcrole: NS.xlink,
+    xlinkHref: NS.xlink,
+    xlinkRole: NS.xlink,
+    xlinkShow: NS.xlink,
+    xlinkTitle: NS.xlink,
+    xlinkType: NS.xlink,
+    xmlBase: NS.xml,
+    xmlLang: NS.xml,
+    xmlSpace: NS.xml
+  },
+  DOMAttributeNames: {
+    clipPath: <span class="string">'clip-path'</span>,
+    fillOpacity: <span class="string">'fill-opacity'</span>,
+    fontFamily: <span class="string">'font-family'</span>,
+    fontSize: <span class="string">'font-size'</span>,
+    gradientTransform: <span class="string">'gradientTransform'</span>,
+    gradientUnits: <span class="string">'gradientUnits'</span>,
+    markerEnd: <span class="string">'marker-end'</span>,
+    markerMid: <span class="string">'marker-mid'</span>,
+    markerStart: <span class="string">'marker-start'</span>,
+    patternContentUnits: <span class="string">'patternContentUnits'</span>,
+    patternUnits: <span class="string">'patternUnits'</span>,
+    preserveAspectRatio: <span class="string">'preserveAspectRatio'</span>,
+    spreadMethod: <span class="string">'spreadMethod'</span>,
+    stopColor: <span class="string">'stop-color'</span>,
+    stopOpacity: <span class="string">'stop-opacity'</span>,
+    strokeDasharray: <span class="string">'stroke-dasharray'</span>,
+    strokeLinecap: <span class="string">'stroke-linecap'</span>,
+    strokeOpacity: <span class="string">'stroke-opacity'</span>,
+    strokeWidth: <span class="string">'stroke-width'</span>,
+    textAnchor: <span class="string">'text-anchor'</span>,
+    viewBox: <span class="string">'viewBox'</span>,
+    xlinkActuate: <span class="string">'xlink:actuate'</span>,
+    xlinkArcrole: <span class="string">'xlink:arcrole'</span>,
+    xlinkHref: <span class="string">'xlink:href'</span>,
+    xlinkRole: <span class="string">'xlink:role'</span>,
+    xlinkShow: <span class="string">'xlink:show'</span>,
+    xlinkTitle: <span class="string">'xlink:title'</span>,
+    xlinkType: <span class="string">'xlink:type'</span>,
+    xmlBase: <span class="string">'xml:base'</span>,
+    xmlLang: <span class="string">'xml:lang'</span>,
+    xmlSpace: <span class="string">'xml:space'</span>
+  }
+};
+
+module.exports = SVGDOMPropertyConfig;</code></pre>

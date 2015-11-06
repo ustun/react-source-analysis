@@ -1,0 +1,149 @@
+<h1>ReactDOMTextComponent.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactDOMTextComponent
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> DOMChildrenOperations = require(<span class="string">'./DOMChildrenOperations'</span>);
+<span class="keyword">var</span> DOMLazyTree = require(<span class="string">'./DOMLazyTree'</span>);
+<span class="keyword">var</span> DOMPropertyOperations = require(<span class="string">'./DOMPropertyOperations'</span>);
+<span class="keyword">var</span> ReactDOMComponentTree = require(<span class="string">'./ReactDOMComponentTree'</span>);
+<span class="keyword">var</span> ReactPerf = require(<span class="string">'./ReactPerf'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> escapeTextContentForBrowser = require(<span class="string">'./escapeTextContentForBrowser'</span>);
+<span class="keyword">var</span> validateDOMNesting = require(<span class="string">'./validateDOMNesting'</span>);
+
+<span class="keyword">var</span> getNode = ReactDOMComponentTree.getNodeFromInstance;
+
+<span class="comment">/**
+ * Text nodes violate a couple assumptions that React makes about components:
+ *
+ *  - When mounting text into the DOM, adjacent text nodes are merged.
+ *  - Text nodes cannot be assigned a React root ID.
+ *
+ * This component is used to wrap strings in elements so that they can undergo
+ * the same reconciliation that is applied to elements.
+ *
+ * TODO: Investigate representing React components in the DOM with text nodes.
+ *
+ * @class ReactDOMTextComponent
+ * @extends ReactComponent
+ * @internal
+ */</span>
+<span class="keyword">var</span> ReactDOMTextComponent = <span class="function"><span class="keyword">function</span> <span class="params">(props)</span> {</span>
+  <span class="comment">// This constructor and its argument is currently used by mocks.</span>
+};
+
+assign(ReactDOMTextComponent.prototype, {
+
+  <span class="comment">/**
+   * @param {ReactText} text
+   * @internal
+   */</span>
+  construct: <span class="function"><span class="keyword">function</span> <span class="params">(text)</span> {</span>
+    <span class="comment">// TODO: This is really a ReactText (ReactNode), not a ReactElement</span>
+    <span class="keyword">this</span>._currentElement = text;
+    <span class="keyword">this</span>._stringText = <span class="string">''</span> + text;
+    <span class="keyword">this</span>._nativeNode = <span class="literal">null</span>;
+    <span class="comment">// ReactDOMComponentTree uses this:</span>
+    <span class="keyword">this</span>._nativeParent = <span class="literal">null</span>;
+
+    <span class="comment">// Properties</span>
+    <span class="keyword">this</span>._domID = <span class="literal">null</span>;
+    <span class="keyword">this</span>._mountIndex = <span class="number">0</span>;
+  },
+
+  <span class="comment">/**
+   * Creates the markup for this text node. This node is not intended to have
+   * any features besides containing text content.
+   *
+   * @param {ReactReconcileTransaction|ReactServerRenderingTransaction} transaction
+   * @return {string} Markup for this text node.
+   * @internal
+   */</span>
+  mountComponent: <span class="function"><span class="keyword">function</span> <span class="params">(transaction, nativeParent, nativeContainerInfo, context)</span> {</span>
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      <span class="keyword">var</span> parentInfo;
+      <span class="keyword">if</span> (nativeParent != <span class="literal">null</span>) {
+        parentInfo = nativeParent._ancestorInfo;
+      } <span class="keyword">else</span> <span class="keyword">if</span> (nativeContainerInfo != <span class="literal">null</span>) {
+        parentInfo = nativeContainerInfo._ancestorInfo;
+      }
+      <span class="keyword">if</span> (parentInfo) {
+        <span class="comment">// parentInfo should always be present except for the top-level</span>
+        <span class="comment">// component when server rendering</span>
+        validateDOMNesting(<span class="string">'span'</span>, <span class="keyword">this</span>, parentInfo);
+      }
+    }
+
+    <span class="keyword">var</span> domID = nativeContainerInfo._idCounter++;
+    <span class="keyword">this</span>._domID = domID;
+    <span class="keyword">this</span>._nativeParent = nativeParent;
+    <span class="keyword">if</span> (transaction.useCreateElement) {
+      <span class="keyword">var</span> ownerDocument = nativeContainerInfo._ownerDocument;
+      <span class="keyword">var</span> el = ownerDocument.createElement(<span class="string">'span'</span>);
+      ReactDOMComponentTree.precacheNode(<span class="keyword">this</span>, el);
+      <span class="keyword">var</span> lazyTree = DOMLazyTree(el);
+      DOMLazyTree.queueText(lazyTree, <span class="keyword">this</span>._stringText);
+      <span class="keyword">return</span> lazyTree;
+    } <span class="keyword">else</span> {
+      <span class="keyword">var</span> escapedText = escapeTextContentForBrowser(<span class="keyword">this</span>._stringText);
+
+      <span class="keyword">if</span> (transaction.renderToStaticMarkup) {
+        <span class="comment">// Normally we'd wrap this in a `span` for the reasons stated above, but</span>
+        <span class="comment">// since this is a situation where React won't take over (static pages),</span>
+        <span class="comment">// we can simply return the text as it is.</span>
+        <span class="keyword">return</span> escapedText;
+      }
+
+      <span class="keyword">return</span> <span class="string">'&lt;span '</span> + DOMPropertyOperations.createMarkupForID(domID) + <span class="string">'>'</span> + escapedText + <span class="string">'&lt;/span>'</span>;
+    }
+  },
+
+  <span class="comment">/**
+   * Updates this component by updating the text content.
+   *
+   * @param {ReactText} nextText The next text content
+   * @param {ReactReconcileTransaction} transaction
+   * @internal
+   */</span>
+  receiveComponent: <span class="function"><span class="keyword">function</span> <span class="params">(nextText, transaction)</span> {</span>
+    <span class="keyword">if</span> (nextText !== <span class="keyword">this</span>._currentElement) {
+      <span class="keyword">this</span>._currentElement = nextText;
+      <span class="keyword">var</span> nextStringText = <span class="string">''</span> + nextText;
+      <span class="keyword">if</span> (nextStringText !== <span class="keyword">this</span>._stringText) {
+        <span class="comment">// TODO: Save this as pending props and use performUpdateIfNecessary</span>
+        <span class="comment">// and/or updateComponent to do the actual update for consistency with</span>
+        <span class="comment">// other component types?</span>
+        <span class="keyword">this</span>._stringText = nextStringText;
+        DOMChildrenOperations.updateTextContent(getNode(<span class="keyword">this</span>), nextStringText);
+      }
+    }
+  },
+
+  getNativeNode: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> getNode(<span class="keyword">this</span>);
+  },
+
+  unmountComponent: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    ReactDOMComponentTree.uncacheNode(<span class="keyword">this</span>);
+  }
+
+});
+
+ReactPerf.measureMethods(ReactDOMTextComponent.prototype, <span class="string">'ReactDOMTextComponent'</span>, {
+  mountComponent: <span class="string">'mountComponent'</span>,
+  receiveComponent: <span class="string">'receiveComponent'</span>
+});
+
+module.exports = ReactDOMTextComponent;</code></pre>

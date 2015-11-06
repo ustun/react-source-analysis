@@ -1,0 +1,243 @@
+<h1>EventPluginRegistry.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule EventPluginRegistry
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+
+<span class="comment">/**
+ * Injectable ordering of event plugins.
+ */</span>
+<span class="keyword">var</span> EventPluginOrder = <span class="literal">null</span>;
+
+<span class="comment">/**
+ * Injectable mapping from names to event plugin modules.
+ */</span>
+<span class="keyword">var</span> namesToPlugins = {};
+
+<span class="comment">/**
+ * Recomputes the plugin list using the injected plugins and plugin ordering.
+ *
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">recomputePluginOrdering</span><span class="params">()</span> {</span>
+  <span class="keyword">if</span> (!EventPluginOrder) {
+    <span class="comment">// Wait until an `EventPluginOrder` is injected.</span>
+    <span class="keyword">return</span>;
+  }
+  <span class="keyword">for</span> (<span class="keyword">var</span> pluginName <span class="keyword">in</span> namesToPlugins) {
+    <span class="keyword">var</span> PluginModule = namesToPlugins[pluginName];
+    <span class="keyword">var</span> pluginIndex = EventPluginOrder.indexOf(pluginName);
+    !(pluginIndex > -<span class="number">1</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'EventPluginRegistry: Cannot inject event plugins that do not exist in '</span> + <span class="string">'the plugin ordering, `%s`.'</span>, pluginName) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    <span class="keyword">if</span> (EventPluginRegistry.plugins[pluginIndex]) {
+      <span class="keyword">continue</span>;
+    }
+    !PluginModule.extractEvents ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'EventPluginRegistry: Event plugins must implement an `extractEvents` '</span> + <span class="string">'method, but `%s` does not.'</span>, pluginName) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    EventPluginRegistry.plugins[pluginIndex] = PluginModule;
+    <span class="keyword">var</span> publishedEvents = PluginModule.eventTypes;
+    <span class="keyword">for</span> (<span class="keyword">var</span> eventName <span class="keyword">in</span> publishedEvents) {
+      !publishEventForPlugin(publishedEvents[eventName], PluginModule, eventName) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'EventPluginRegistry: Failed to publish event `%s` for plugin `%s`.'</span>, eventName, pluginName) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    }
+  }
+}
+
+<span class="comment">/**
+ * Publishes an event so that it can be dispatched by the supplied plugin.
+ *
+ * @param {object} dispatchConfig Dispatch configuration for the event.
+ * @param {object} PluginModule Plugin publishing the event.
+ * @return {boolean} True if the event was successfully published.
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">publishEventForPlugin</span><span class="params">(dispatchConfig, PluginModule, eventName)</span> {</span>
+  !!EventPluginRegistry.eventNameDispatchConfigs.hasOwnProperty(eventName) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'EventPluginHub: More than one plugin attempted to publish the same '</span> + <span class="string">'event name, `%s`.'</span>, eventName) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  EventPluginRegistry.eventNameDispatchConfigs[eventName] = dispatchConfig;
+
+  <span class="keyword">var</span> phasedRegistrationNames = dispatchConfig.phasedRegistrationNames;
+  <span class="keyword">if</span> (phasedRegistrationNames) {
+    <span class="keyword">for</span> (<span class="keyword">var</span> phaseName <span class="keyword">in</span> phasedRegistrationNames) {
+      <span class="keyword">if</span> (phasedRegistrationNames.hasOwnProperty(phaseName)) {
+        <span class="keyword">var</span> phasedRegistrationName = phasedRegistrationNames[phaseName];
+        publishRegistrationName(phasedRegistrationName, PluginModule, eventName);
+      }
+    }
+    <span class="keyword">return</span> <span class="literal">true</span>;
+  } <span class="keyword">else</span> <span class="keyword">if</span> (dispatchConfig.registrationName) {
+    publishRegistrationName(dispatchConfig.registrationName, PluginModule, eventName);
+    <span class="keyword">return</span> <span class="literal">true</span>;
+  }
+  <span class="keyword">return</span> <span class="literal">false</span>;
+}
+
+<span class="comment">/**
+ * Publishes a registration name that is used to identify dispatched events and
+ * can be used with `EventPluginHub.putListener` to register listeners.
+ *
+ * @param {string} registrationName Registration name to add.
+ * @param {object} PluginModule Plugin publishing the event.
+ * @private
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">publishRegistrationName</span><span class="params">(registrationName, PluginModule, eventName)</span> {</span>
+  !!EventPluginRegistry.registrationNameModules[registrationName] ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'EventPluginHub: More than one plugin attempted to publish the same '</span> + <span class="string">'registration name, `%s`.'</span>, registrationName) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+  EventPluginRegistry.registrationNameModules[registrationName] = PluginModule;
+  EventPluginRegistry.registrationNameDependencies[registrationName] = PluginModule.eventTypes[eventName].dependencies;
+
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    <span class="keyword">var</span> lowerCasedName = registrationName.toLowerCase();
+    EventPluginRegistry.possibleRegistrationNames[lowerCasedName] = registrationName;
+  }
+}
+
+<span class="comment">/**
+ * Registers plugins so that they can extract and dispatch events.
+ *
+ * @see {EventPluginHub}
+ */</span>
+<span class="keyword">var</span> EventPluginRegistry = {
+
+  <span class="comment">/**
+   * Ordered list of injected plugins.
+   */</span>
+  plugins: [],
+
+  <span class="comment">/**
+   * Mapping from event name to dispatch config
+   */</span>
+  eventNameDispatchConfigs: {},
+
+  <span class="comment">/**
+   * Mapping from registration name to plugin module
+   */</span>
+  registrationNameModules: {},
+
+  <span class="comment">/**
+   * Mapping from registration name to event name
+   */</span>
+  registrationNameDependencies: {},
+
+  <span class="comment">/**
+   * Mapping from lowercase registration names to the properly cased version,
+   * used to warn in the case of missing event handlers. Available
+   * only in __DEV__.
+   * @type {Object}
+   */</span>
+  possibleRegistrationNames: process.env.NODE_ENV !== <span class="string">'production'</span> ? {} : <span class="literal">null</span>,
+
+  <span class="comment">/**
+   * Injects an ordering of plugins (by plugin name). This allows the ordering
+   * to be decoupled from injection of the actual plugins so that ordering is
+   * always deterministic regardless of packaging, on-the-fly injection, etc.
+   *
+   * @param {array} InjectedEventPluginOrder
+   * @internal
+   * @see {EventPluginHub.injection.injectEventPluginOrder}
+   */</span>
+  injectEventPluginOrder: <span class="function"><span class="keyword">function</span> <span class="params">(InjectedEventPluginOrder)</span> {</span>
+    !!EventPluginOrder ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'EventPluginRegistry: Cannot inject event plugin ordering more than '</span> + <span class="string">'once. You are likely trying to load more than one copy of React.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+    <span class="comment">// Clone the ordering so it cannot be dynamically mutated.</span>
+    EventPluginOrder = Array.prototype.slice.call(InjectedEventPluginOrder);
+    recomputePluginOrdering();
+  },
+
+  <span class="comment">/**
+   * Injects plugins to be used by `EventPluginHub`. The plugin names must be
+   * in the ordering injected by `injectEventPluginOrder`.
+   *
+   * Plugins can be injected as part of page initialization or on-the-fly.
+   *
+   * @param {object} injectedNamesToPlugins Map from names to plugin modules.
+   * @internal
+   * @see {EventPluginHub.injection.injectEventPluginsByName}
+   */</span>
+  injectEventPluginsByName: <span class="function"><span class="keyword">function</span> <span class="params">(injectedNamesToPlugins)</span> {</span>
+    <span class="keyword">var</span> isOrderingDirty = <span class="literal">false</span>;
+    <span class="keyword">for</span> (<span class="keyword">var</span> pluginName <span class="keyword">in</span> injectedNamesToPlugins) {
+      <span class="keyword">if</span> (!injectedNamesToPlugins.hasOwnProperty(pluginName)) {
+        <span class="keyword">continue</span>;
+      }
+      <span class="keyword">var</span> PluginModule = injectedNamesToPlugins[pluginName];
+      <span class="keyword">if</span> (!namesToPlugins.hasOwnProperty(pluginName) || namesToPlugins[pluginName] !== PluginModule) {
+        !!namesToPlugins[pluginName] ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'EventPluginRegistry: Cannot inject two different event plugins '</span> + <span class="string">'using the same name, `%s`.'</span>, pluginName) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+        namesToPlugins[pluginName] = PluginModule;
+        isOrderingDirty = <span class="literal">true</span>;
+      }
+    }
+    <span class="keyword">if</span> (isOrderingDirty) {
+      recomputePluginOrdering();
+    }
+  },
+
+  <span class="comment">/**
+   * Looks up the plugin for the supplied event.
+   *
+   * @param {object} event A synthetic event.
+   * @return {?object} The plugin that created the supplied event.
+   * @internal
+   */</span>
+  getPluginModuleForEvent: <span class="function"><span class="keyword">function</span> <span class="params">(event)</span> {</span>
+    <span class="keyword">var</span> dispatchConfig = event.dispatchConfig;
+    <span class="keyword">if</span> (dispatchConfig.registrationName) {
+      <span class="keyword">return</span> EventPluginRegistry.registrationNameModules[dispatchConfig.registrationName] || <span class="literal">null</span>;
+    }
+    <span class="keyword">for</span> (<span class="keyword">var</span> phase <span class="keyword">in</span> dispatchConfig.phasedRegistrationNames) {
+      <span class="keyword">if</span> (!dispatchConfig.phasedRegistrationNames.hasOwnProperty(phase)) {
+        <span class="keyword">continue</span>;
+      }
+      <span class="keyword">var</span> PluginModule = EventPluginRegistry.registrationNameModules[dispatchConfig.phasedRegistrationNames[phase]];
+      <span class="keyword">if</span> (PluginModule) {
+        <span class="keyword">return</span> PluginModule;
+      }
+    }
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  },
+
+  <span class="comment">/**
+   * Exposed for unit testing.
+   * @private
+   */</span>
+  _resetEventPlugins: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    EventPluginOrder = <span class="literal">null</span>;
+    <span class="keyword">for</span> (<span class="keyword">var</span> pluginName <span class="keyword">in</span> namesToPlugins) {
+      <span class="keyword">if</span> (namesToPlugins.hasOwnProperty(pluginName)) {
+        <span class="keyword">delete</span> namesToPlugins[pluginName];
+      }
+    }
+    EventPluginRegistry.plugins.length = <span class="number">0</span>;
+
+    <span class="keyword">var</span> eventNameDispatchConfigs = EventPluginRegistry.eventNameDispatchConfigs;
+    <span class="keyword">for</span> (<span class="keyword">var</span> eventName <span class="keyword">in</span> eventNameDispatchConfigs) {
+      <span class="keyword">if</span> (eventNameDispatchConfigs.hasOwnProperty(eventName)) {
+        <span class="keyword">delete</span> eventNameDispatchConfigs[eventName];
+      }
+    }
+
+    <span class="keyword">var</span> registrationNameModules = EventPluginRegistry.registrationNameModules;
+    <span class="keyword">for</span> (<span class="keyword">var</span> registrationName <span class="keyword">in</span> registrationNameModules) {
+      <span class="keyword">if</span> (registrationNameModules.hasOwnProperty(registrationName)) {
+        <span class="keyword">delete</span> registrationNameModules[registrationName];
+      }
+    }
+
+    <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+      <span class="keyword">var</span> possibleRegistrationNames = EventPluginRegistry.possibleRegistrationNames;
+      <span class="keyword">for</span> (<span class="keyword">var</span> lowerCasedName <span class="keyword">in</span> possibleRegistrationNames) {
+        <span class="keyword">if</span> (possibleRegistrationNames.hasOwnProperty(lowerCasedName)) {
+          <span class="keyword">delete</span> possibleRegistrationNames[lowerCasedName];
+        }
+      }
+    }
+  }
+
+};
+
+module.exports = EventPluginRegistry;</code></pre>

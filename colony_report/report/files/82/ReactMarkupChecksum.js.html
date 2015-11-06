@@ -1,0 +1,46 @@
+<h1>ReactMarkupChecksum.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactMarkupChecksum
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> adler32 = require(<span class="string">'./adler32'</span>);
+
+<span class="keyword">var</span> TAG_END = <span class="regexp">/\/?>/</span>;
+
+<span class="keyword">var</span> ReactMarkupChecksum = {
+  CHECKSUM_ATTR_NAME: <span class="string">'data-react-checksum'</span>,
+
+  <span class="comment">/**
+   * @param {string} markup Markup string
+   * @return {string} Markup string with checksum attribute attached
+   */</span>
+  addChecksumToMarkup: <span class="function"><span class="keyword">function</span> <span class="params">(markup)</span> {</span>
+    <span class="keyword">var</span> checksum = adler32(markup);
+
+    <span class="comment">// Add checksum (handle both parent tags and self-closing tags)</span>
+    <span class="keyword">return</span> markup.replace(TAG_END, <span class="string">' '</span> + ReactMarkupChecksum.CHECKSUM_ATTR_NAME + <span class="string">'="'</span> + checksum + <span class="string">'"$&amp;'</span>);
+  },
+
+  <span class="comment">/**
+   * @param {string} markup to use
+   * @param {DOMElement} element root React element
+   * @returns {boolean} whether or not the markup is the same
+   */</span>
+  canReuseMarkup: <span class="function"><span class="keyword">function</span> <span class="params">(markup, element)</span> {</span>
+    <span class="keyword">var</span> existingChecksum = element.getAttribute(ReactMarkupChecksum.CHECKSUM_ATTR_NAME);
+    existingChecksum = existingChecksum &amp;&amp; parseInt(existingChecksum, <span class="number">10</span>);
+    <span class="keyword">var</span> markupChecksum = adler32(markup);
+    <span class="keyword">return</span> markupChecksum === existingChecksum;
+  }
+};
+
+module.exports = ReactMarkupChecksum;</code></pre>

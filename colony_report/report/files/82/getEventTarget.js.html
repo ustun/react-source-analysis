@@ -1,0 +1,30 @@
+<h1>getEventTarget.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule getEventTarget
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="comment">/**
+ * Gets the target node from a native browser event by accounting for
+ * inconsistencies in browser DOM APIs.
+ *
+ * @param {object} nativeEvent Native browser event.
+ * @return {DOMEventTarget} Target node.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getEventTarget</span><span class="params">(nativeEvent)</span> {</span>
+  <span class="keyword">var</span> target = nativeEvent.target || nativeEvent.srcElement || window;
+  <span class="comment">// Safari may fire events on text nodes (Node.TEXT_NODE is 3).</span>
+  <span class="comment">// @see http://www.quirksmode.org/js/events_properties.html</span>
+  <span class="keyword">return</span> target.nodeType === <span class="number">3</span> ? target.parentNode : target;
+}
+
+module.exports = getEventTarget;</code></pre>

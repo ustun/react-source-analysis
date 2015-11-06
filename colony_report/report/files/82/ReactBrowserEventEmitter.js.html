@@ -1,0 +1,306 @@
+<h1>ReactBrowserEventEmitter.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactBrowserEventEmitter
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> EventConstants = require(<span class="string">'./EventConstants'</span>);
+<span class="keyword">var</span> EventPluginRegistry = require(<span class="string">'./EventPluginRegistry'</span>);
+<span class="keyword">var</span> ReactEventEmitterMixin = require(<span class="string">'./ReactEventEmitterMixin'</span>);
+<span class="keyword">var</span> ViewportMetrics = require(<span class="string">'./ViewportMetrics'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> isEventSupported = require(<span class="string">'./isEventSupported'</span>);
+
+<span class="comment">/**
+ * Summary of `ReactBrowserEventEmitter` event handling:
+ *
+ *  - Top-level delegation is used to trap most native browser events. This
+ *    may only occur in the main thread and is the responsibility of
+ *    ReactEventListener, which is injected and can therefore support pluggable
+ *    event sources. This is the only work that occurs in the main thread.
+ *
+ *  - We normalize and de-duplicate events to account for browser quirks. This
+ *    may be done in the worker thread.
+ *
+ *  - Forward these native events (with the associated top-level type used to
+ *    trap it) to `EventPluginHub`, which in turn will ask plugins if they want
+ *    to extract any synthetic events.
+ *
+ *  - The `EventPluginHub` will then process each event by annotating them with
+ *    "dispatches", a sequence of listeners and IDs that care about that event.
+ *
+ *  - The `EventPluginHub` then dispatches the events.
+ *
+ * Overview of React and the event system:
+ *
+ * +------------+    .
+ * |    DOM     |    .
+ * +------------+    .
+ *       |           .
+ *       v           .
+ * +------------+    .
+ * | ReactEvent |    .
+ * |  Listener  |    .
+ * +------------+    .                         +-----------+
+ *       |           .               +--------+|SimpleEvent|
+ *       |           .               |         |Plugin     |
+ * +-----|------+    .               v         +-----------+
+ * |     |      |    .    +--------------+                    +------------+
+ * |     +-----------.--->|EventPluginHub|                    |    Event   |
+ * |            |    .    |              |     +-----------+  | Propagators|
+ * | ReactEvent |    .    |              |     |TapEvent   |  |------------|
+ * |  Emitter   |    .    |              |&lt;---+|Plugin     |  |other plugin|
+ * |            |    .    |              |     +-----------+  |  utilities |
+ * |     +-----------.--->|              |                    +------------+
+ * |     |      |    .    +--------------+
+ * +-----|------+    .                ^        +-----------+
+ *       |           .                |        |Enter/Leave|
+ *       +           .                +-------+|Plugin     |
+ * +-------------+   .                         +-----------+
+ * | application |   .
+ * |-------------|   .
+ * |             |   .
+ * |             |   .
+ * +-------------+   .
+ *                   .
+ *    React Core     .  General Purpose Event Plugin System
+ */</span>
+
+<span class="keyword">var</span> alreadyListeningTo = {};
+<span class="keyword">var</span> isMonitoringScrollValue = <span class="literal">false</span>;
+<span class="keyword">var</span> reactTopListenersCounter = <span class="number">0</span>;
+
+<span class="comment">// For events like 'submit' which don't consistently bubble (which we trap at a</span>
+<span class="comment">// lower node than `document`), binding at `document` would cause duplicate</span>
+<span class="comment">// events so we don't include them here</span>
+<span class="keyword">var</span> topEventMapping = {
+  topAbort: <span class="string">'abort'</span>,
+  topBlur: <span class="string">'blur'</span>,
+  topCanPlay: <span class="string">'canplay'</span>,
+  topCanPlayThrough: <span class="string">'canplaythrough'</span>,
+  topChange: <span class="string">'change'</span>,
+  topClick: <span class="string">'click'</span>,
+  topCompositionEnd: <span class="string">'compositionend'</span>,
+  topCompositionStart: <span class="string">'compositionstart'</span>,
+  topCompositionUpdate: <span class="string">'compositionupdate'</span>,
+  topContextMenu: <span class="string">'contextmenu'</span>,
+  topCopy: <span class="string">'copy'</span>,
+  topCut: <span class="string">'cut'</span>,
+  topDoubleClick: <span class="string">'dblclick'</span>,
+  topDrag: <span class="string">'drag'</span>,
+  topDragEnd: <span class="string">'dragend'</span>,
+  topDragEnter: <span class="string">'dragenter'</span>,
+  topDragExit: <span class="string">'dragexit'</span>,
+  topDragLeave: <span class="string">'dragleave'</span>,
+  topDragOver: <span class="string">'dragover'</span>,
+  topDragStart: <span class="string">'dragstart'</span>,
+  topDrop: <span class="string">'drop'</span>,
+  topDurationChange: <span class="string">'durationchange'</span>,
+  topEmptied: <span class="string">'emptied'</span>,
+  topEncrypted: <span class="string">'encrypted'</span>,
+  topEnded: <span class="string">'ended'</span>,
+  topError: <span class="string">'error'</span>,
+  topFocus: <span class="string">'focus'</span>,
+  topInput: <span class="string">'input'</span>,
+  topKeyDown: <span class="string">'keydown'</span>,
+  topKeyPress: <span class="string">'keypress'</span>,
+  topKeyUp: <span class="string">'keyup'</span>,
+  topLoadedData: <span class="string">'loadeddata'</span>,
+  topLoadedMetadata: <span class="string">'loadedmetadata'</span>,
+  topLoadStart: <span class="string">'loadstart'</span>,
+  topMouseDown: <span class="string">'mousedown'</span>,
+  topMouseMove: <span class="string">'mousemove'</span>,
+  topMouseOut: <span class="string">'mouseout'</span>,
+  topMouseOver: <span class="string">'mouseover'</span>,
+  topMouseUp: <span class="string">'mouseup'</span>,
+  topPaste: <span class="string">'paste'</span>,
+  topPause: <span class="string">'pause'</span>,
+  topPlay: <span class="string">'play'</span>,
+  topPlaying: <span class="string">'playing'</span>,
+  topProgress: <span class="string">'progress'</span>,
+  topRateChange: <span class="string">'ratechange'</span>,
+  topScroll: <span class="string">'scroll'</span>,
+  topSeeked: <span class="string">'seeked'</span>,
+  topSeeking: <span class="string">'seeking'</span>,
+  topSelectionChange: <span class="string">'selectionchange'</span>,
+  topStalled: <span class="string">'stalled'</span>,
+  topSuspend: <span class="string">'suspend'</span>,
+  topTextInput: <span class="string">'textInput'</span>,
+  topTimeUpdate: <span class="string">'timeupdate'</span>,
+  topTouchCancel: <span class="string">'touchcancel'</span>,
+  topTouchEnd: <span class="string">'touchend'</span>,
+  topTouchMove: <span class="string">'touchmove'</span>,
+  topTouchStart: <span class="string">'touchstart'</span>,
+  topVolumeChange: <span class="string">'volumechange'</span>,
+  topWaiting: <span class="string">'waiting'</span>,
+  topWheel: <span class="string">'wheel'</span>
+};
+
+<span class="comment">/**
+ * To ensure no conflicts with other potential React instances on the page
+ */</span>
+<span class="keyword">var</span> topListenersIDKey = <span class="string">'_reactListenersID'</span> + String(Math.random()).slice(<span class="number">2</span>);
+
+<span class="function"><span class="keyword">function</span> <span class="title">getListeningForDocument</span><span class="params">(mountAt)</span> {</span>
+  <span class="comment">// In IE8, `mountAt` is a host object and doesn't have `hasOwnProperty`</span>
+  <span class="comment">// directly.</span>
+  <span class="keyword">if</span> (!Object.prototype.hasOwnProperty.call(mountAt, topListenersIDKey)) {
+    mountAt[topListenersIDKey] = reactTopListenersCounter++;
+    alreadyListeningTo[mountAt[topListenersIDKey]] = {};
+  }
+  <span class="keyword">return</span> alreadyListeningTo[mountAt[topListenersIDKey]];
+}
+
+<span class="comment">/**
+ * `ReactBrowserEventEmitter` is used to attach top-level event listeners. For
+ * example:
+ *
+ *   EventPluginHub.putListener('myID', 'onClick', myFunction);
+ *
+ * This would allocate a "registration" of `('onClick', myFunction)` on 'myID'.
+ *
+ * @internal
+ */</span>
+<span class="keyword">var</span> ReactBrowserEventEmitter = assign({}, ReactEventEmitterMixin, {
+
+  <span class="comment">/**
+   * Injectable event backend
+   */</span>
+  ReactEventListener: <span class="literal">null</span>,
+
+  injection: {
+    <span class="comment">/**
+     * @param {object} ReactEventListener
+     */</span>
+    injectReactEventListener: <span class="function"><span class="keyword">function</span> <span class="params">(ReactEventListener)</span> {</span>
+      ReactEventListener.setHandleTopLevel(ReactBrowserEventEmitter.handleTopLevel);
+      ReactBrowserEventEmitter.ReactEventListener = ReactEventListener;
+    }
+  },
+
+  <span class="comment">/**
+   * Sets whether or not any created callbacks should be enabled.
+   *
+   * @param {boolean} enabled True if callbacks should be enabled.
+   */</span>
+  setEnabled: <span class="function"><span class="keyword">function</span> <span class="params">(enabled)</span> {</span>
+    <span class="keyword">if</span> (ReactBrowserEventEmitter.ReactEventListener) {
+      ReactBrowserEventEmitter.ReactEventListener.setEnabled(enabled);
+    }
+  },
+
+  <span class="comment">/**
+   * @return {boolean} True if callbacks are enabled.
+   */</span>
+  isEnabled: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> !!(ReactBrowserEventEmitter.ReactEventListener &amp;&amp; ReactBrowserEventEmitter.ReactEventListener.isEnabled());
+  },
+
+  <span class="comment">/**
+   * We listen for bubbled touch events on the document object.
+   *
+   * Firefox v8.01 (and possibly others) exhibited strange behavior when
+   * mounting `onmousemove` events at some node that was not the document
+   * element. The symptoms were that if your mouse is not moving over something
+   * contained within that mount point (for example on the background) the
+   * top-level listeners for `onmousemove` won't be called. However, if you
+   * register the `mousemove` on the document object, then it will of course
+   * catch all `mousemove`s. This along with iOS quirks, justifies restricting
+   * top-level listeners to the document object only, at least for these
+   * movement types of events and possibly all events.
+   *
+   * @see http://www.quirksmode.org/blog/archives/2010/09/click_event_del.html
+   *
+   * Also, `keyup`/`keypress`/`keydown` do not bubble to the window on IE, but
+   * they bubble to document.
+   *
+   * @param {string} registrationName Name of listener (e.g. `onClick`).
+   * @param {object} contentDocumentHandle Document which owns the container
+   */</span>
+  listenTo: <span class="function"><span class="keyword">function</span> <span class="params">(registrationName, contentDocumentHandle)</span> {</span>
+    <span class="keyword">var</span> mountAt = contentDocumentHandle;
+    <span class="keyword">var</span> isListening = getListeningForDocument(mountAt);
+    <span class="keyword">var</span> dependencies = EventPluginRegistry.registrationNameDependencies[registrationName];
+
+    <span class="keyword">var</span> topLevelTypes = EventConstants.topLevelTypes;
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; dependencies.length; i++) {
+      <span class="keyword">var</span> dependency = dependencies[i];
+      <span class="keyword">if</span> (!(isListening.hasOwnProperty(dependency) &amp;&amp; isListening[dependency])) {
+        <span class="keyword">if</span> (dependency === topLevelTypes.topWheel) {
+          <span class="keyword">if</span> (isEventSupported(<span class="string">'wheel'</span>)) {
+            ReactBrowserEventEmitter.ReactEventListener.trapBubbledEvent(topLevelTypes.topWheel, <span class="string">'wheel'</span>, mountAt);
+          } <span class="keyword">else</span> <span class="keyword">if</span> (isEventSupported(<span class="string">'mousewheel'</span>)) {
+            ReactBrowserEventEmitter.ReactEventListener.trapBubbledEvent(topLevelTypes.topWheel, <span class="string">'mousewheel'</span>, mountAt);
+          } <span class="keyword">else</span> {
+            <span class="comment">// Firefox needs to capture a different mouse scroll event.</span>
+            <span class="comment">// @see http://www.quirksmode.org/dom/events/tests/scroll.html</span>
+            ReactBrowserEventEmitter.ReactEventListener.trapBubbledEvent(topLevelTypes.topWheel, <span class="string">'DOMMouseScroll'</span>, mountAt);
+          }
+        } <span class="keyword">else</span> <span class="keyword">if</span> (dependency === topLevelTypes.topScroll) {
+
+          <span class="keyword">if</span> (isEventSupported(<span class="string">'scroll'</span>, <span class="literal">true</span>)) {
+            ReactBrowserEventEmitter.ReactEventListener.trapCapturedEvent(topLevelTypes.topScroll, <span class="string">'scroll'</span>, mountAt);
+          } <span class="keyword">else</span> {
+            ReactBrowserEventEmitter.ReactEventListener.trapBubbledEvent(topLevelTypes.topScroll, <span class="string">'scroll'</span>, ReactBrowserEventEmitter.ReactEventListener.WINDOW_HANDLE);
+          }
+        } <span class="keyword">else</span> <span class="keyword">if</span> (dependency === topLevelTypes.topFocus || dependency === topLevelTypes.topBlur) {
+
+          <span class="keyword">if</span> (isEventSupported(<span class="string">'focus'</span>, <span class="literal">true</span>)) {
+            ReactBrowserEventEmitter.ReactEventListener.trapCapturedEvent(topLevelTypes.topFocus, <span class="string">'focus'</span>, mountAt);
+            ReactBrowserEventEmitter.ReactEventListener.trapCapturedEvent(topLevelTypes.topBlur, <span class="string">'blur'</span>, mountAt);
+          } <span class="keyword">else</span> <span class="keyword">if</span> (isEventSupported(<span class="string">'focusin'</span>)) {
+            <span class="comment">// IE has `focusin` and `focusout` events which bubble.</span>
+            <span class="comment">// @see http://www.quirksmode.org/blog/archives/2008/04/delegating_the.html</span>
+            ReactBrowserEventEmitter.ReactEventListener.trapBubbledEvent(topLevelTypes.topFocus, <span class="string">'focusin'</span>, mountAt);
+            ReactBrowserEventEmitter.ReactEventListener.trapBubbledEvent(topLevelTypes.topBlur, <span class="string">'focusout'</span>, mountAt);
+          }
+
+          <span class="comment">// to make sure blur and focus event listeners are only attached once</span>
+          isListening[topLevelTypes.topBlur] = <span class="literal">true</span>;
+          isListening[topLevelTypes.topFocus] = <span class="literal">true</span>;
+        } <span class="keyword">else</span> <span class="keyword">if</span> (topEventMapping.hasOwnProperty(dependency)) {
+          ReactBrowserEventEmitter.ReactEventListener.trapBubbledEvent(dependency, topEventMapping[dependency], mountAt);
+        }
+
+        isListening[dependency] = <span class="literal">true</span>;
+      }
+    }
+  },
+
+  trapBubbledEvent: <span class="function"><span class="keyword">function</span> <span class="params">(topLevelType, handlerBaseName, handle)</span> {</span>
+    <span class="keyword">return</span> ReactBrowserEventEmitter.ReactEventListener.trapBubbledEvent(topLevelType, handlerBaseName, handle);
+  },
+
+  trapCapturedEvent: <span class="function"><span class="keyword">function</span> <span class="params">(topLevelType, handlerBaseName, handle)</span> {</span>
+    <span class="keyword">return</span> ReactBrowserEventEmitter.ReactEventListener.trapCapturedEvent(topLevelType, handlerBaseName, handle);
+  },
+
+  <span class="comment">/**
+   * Listens to window scroll and resize events. We cache scroll values so that
+   * application code can access them without triggering reflows.
+   *
+   * NOTE: Scroll events do not bubble.
+   *
+   * @see http://www.quirksmode.org/dom/events/scroll.html
+   */</span>
+  ensureScrollValueMonitoring: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">if</span> (!isMonitoringScrollValue) {
+      <span class="keyword">var</span> refresh = ViewportMetrics.refreshScrollValues;
+      ReactBrowserEventEmitter.ReactEventListener.monitorScrollValue(refresh);
+      isMonitoringScrollValue = <span class="literal">true</span>;
+    }
+  }
+
+});
+
+module.exports = ReactBrowserEventEmitter;</code></pre>

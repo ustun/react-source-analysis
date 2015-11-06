@@ -1,0 +1,151 @@
+<h1>ReactReconcileTransaction.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactReconcileTransaction
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> CallbackQueue = require(<span class="string">'./CallbackQueue'</span>);
+<span class="keyword">var</span> PooledClass = require(<span class="string">'./PooledClass'</span>);
+<span class="keyword">var</span> ReactBrowserEventEmitter = require(<span class="string">'./ReactBrowserEventEmitter'</span>);
+<span class="keyword">var</span> ReactInputSelection = require(<span class="string">'./ReactInputSelection'</span>);
+<span class="keyword">var</span> Transaction = require(<span class="string">'./Transaction'</span>);
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+
+<span class="comment">/**
+ * Ensures that, when possible, the selection range (currently selected text
+ * input) is not disturbed by performing the transaction.
+ */</span>
+<span class="keyword">var</span> SELECTION_RESTORATION = {
+  <span class="comment">/**
+   * @return {Selection} Selection information.
+   */</span>
+  initialize: ReactInputSelection.getSelectionInformation,
+  <span class="comment">/**
+   * @param {Selection} sel Selection information returned from `initialize`.
+   */</span>
+  close: ReactInputSelection.restoreSelection
+};
+
+<span class="comment">/**
+ * Suppresses events (blur/focus) that could be inadvertently dispatched due to
+ * high level DOM manipulations (like temporarily removing a text input from the
+ * DOM).
+ */</span>
+<span class="keyword">var</span> EVENT_SUPPRESSION = {
+  <span class="comment">/**
+   * @return {boolean} The enabled status of `ReactBrowserEventEmitter` before
+   * the reconciliation.
+   */</span>
+  initialize: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">var</span> currentlyEnabled = ReactBrowserEventEmitter.isEnabled();
+    ReactBrowserEventEmitter.setEnabled(<span class="literal">false</span>);
+    <span class="keyword">return</span> currentlyEnabled;
+  },
+
+  <span class="comment">/**
+   * @param {boolean} previouslyEnabled Enabled status of
+   *   `ReactBrowserEventEmitter` before the reconciliation occurred. `close`
+   *   restores the previous value.
+   */</span>
+  close: <span class="function"><span class="keyword">function</span> <span class="params">(previouslyEnabled)</span> {</span>
+    ReactBrowserEventEmitter.setEnabled(previouslyEnabled);
+  }
+};
+
+<span class="comment">/**
+ * Provides a queue for collecting `componentDidMount` and
+ * `componentDidUpdate` callbacks during the the transaction.
+ */</span>
+<span class="keyword">var</span> ON_DOM_READY_QUEUEING = {
+  <span class="comment">/**
+   * Initializes the internal `onDOMReady` queue.
+   */</span>
+  initialize: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">this</span>.reactMountReady.reset();
+  },
+
+  <span class="comment">/**
+   * After DOM is flushed, invoke all registered `onDOMReady` callbacks.
+   */</span>
+  close: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">this</span>.reactMountReady.notifyAll();
+  }
+};
+
+<span class="comment">/**
+ * Executed within the scope of the `Transaction` instance. Consider these as
+ * being member methods, but with an implied ordering while being isolated from
+ * each other.
+ */</span>
+<span class="keyword">var</span> TRANSACTION_WRAPPERS = [SELECTION_RESTORATION, EVENT_SUPPRESSION, ON_DOM_READY_QUEUEING];
+
+<span class="comment">/**
+ * Currently:
+ * - The order that these are listed in the transaction is critical:
+ * - Suppresses events.
+ * - Restores selection range.
+ *
+ * Future:
+ * - Restore document/overflow scroll positions that were unintentionally
+ *   modified via DOM insertions above the top viewport boundary.
+ * - Implement/integrate with customized constraint based layout system and keep
+ *   track of which dimensions must be remeasured.
+ *
+ * @class ReactReconcileTransaction
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">ReactReconcileTransaction</span><span class="params">(useCreateElement)</span> {</span>
+  <span class="keyword">this</span>.reinitializeTransaction();
+  <span class="comment">// Only server-side rendering really needs this option (see</span>
+  <span class="comment">// `ReactServerRendering`), but server-side uses</span>
+  <span class="comment">// `ReactServerRenderingTransaction` instead. This option is here so that it's</span>
+  <span class="comment">// accessible and defaults to false when `ReactDOMComponent` and</span>
+  <span class="comment">// `ReactTextComponent` checks it in `mountComponent`.`</span>
+  <span class="keyword">this</span>.renderToStaticMarkup = <span class="literal">false</span>;
+  <span class="keyword">this</span>.reactMountReady = CallbackQueue.getPooled(<span class="literal">null</span>);
+  <span class="keyword">this</span>.useCreateElement = useCreateElement;
+}
+
+<span class="keyword">var</span> Mixin = {
+  <span class="comment">/**
+   * @see Transaction
+   * @abstract
+   * @final
+   * @return {array&lt;object>} List of operation wrap procedures.
+   *   TODO: convert to array&lt;TransactionWrapper>
+   */</span>
+  getTransactionWrappers: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> TRANSACTION_WRAPPERS;
+  },
+
+  <span class="comment">/**
+   * @return {object} The queue to collect `onDOMReady` callbacks with.
+   */</span>
+  getReactMountReady: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">return</span> <span class="keyword">this</span>.reactMountReady;
+  },
+
+  <span class="comment">/**
+   * `PooledClass` looks for this, and will invoke this before allowing this
+   * instance to be reused.
+   */</span>
+  destructor: <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    CallbackQueue.release(<span class="keyword">this</span>.reactMountReady);
+    <span class="keyword">this</span>.reactMountReady = <span class="literal">null</span>;
+  }
+};
+
+assign(ReactReconcileTransaction.prototype, Transaction.Mixin, Mixin);
+
+PooledClass.addPoolingTo(ReactReconcileTransaction);
+
+module.exports = ReactReconcileTransaction;</code></pre>

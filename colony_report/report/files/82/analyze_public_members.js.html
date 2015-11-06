@@ -1,0 +1,16 @@
+<h1>analyze_public_members.js</h1>
+<pre><code class="lang-js"><span class="keyword">const</span> getPublicMembersOfModule = (module) => {
+  <span class="keyword">var</span> keys = Object.keys(module);
+
+  <span class="keyword">return</span> keys.filter(<span class="function"><span class="keyword">function</span> <span class="params">(key)</span> {</span>
+    <span class="keyword">return</span> <span class="regexp">/^[a-zA-z]/</span>.test(key);
+  });
+
+};
+
+module.exports = (fileName) => {
+  <span class="keyword">var</span> x = require(<span class="string">'./'</span> + fileName);
+  <span class="keyword">return</span> {module: fileName.replace(<span class="string">'.js'</span>, <span class="string">''</span>),
+          members: getPublicMembersOfModule(x)};
+};
+</code></pre>

@@ -1,0 +1,142 @@
+<h1>CSSProperty.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule CSSProperty
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="comment">/**
+ * CSS properties which accept numbers but are not in units of "px".
+ */</span>
+<span class="keyword">var</span> isUnitlessNumber = {
+  animationIterationCount: <span class="literal">true</span>,
+  boxFlex: <span class="literal">true</span>,
+  boxFlexGroup: <span class="literal">true</span>,
+  boxOrdinalGroup: <span class="literal">true</span>,
+  columnCount: <span class="literal">true</span>,
+  flex: <span class="literal">true</span>,
+  flexGrow: <span class="literal">true</span>,
+  flexPositive: <span class="literal">true</span>,
+  flexShrink: <span class="literal">true</span>,
+  flexNegative: <span class="literal">true</span>,
+  flexOrder: <span class="literal">true</span>,
+  gridRow: <span class="literal">true</span>,
+  gridColumn: <span class="literal">true</span>,
+  fontWeight: <span class="literal">true</span>,
+  lineClamp: <span class="literal">true</span>,
+  lineHeight: <span class="literal">true</span>,
+  opacity: <span class="literal">true</span>,
+  order: <span class="literal">true</span>,
+  orphans: <span class="literal">true</span>,
+  tabSize: <span class="literal">true</span>,
+  widows: <span class="literal">true</span>,
+  zIndex: <span class="literal">true</span>,
+  zoom: <span class="literal">true</span>,
+
+  <span class="comment">// SVG-related properties</span>
+  fillOpacity: <span class="literal">true</span>,
+  stopOpacity: <span class="literal">true</span>,
+  strokeDashoffset: <span class="literal">true</span>,
+  strokeOpacity: <span class="literal">true</span>,
+  strokeWidth: <span class="literal">true</span>
+};
+
+<span class="comment">/**
+ * @param {string} prefix vendor-specific prefix, eg: Webkit
+ * @param {string} key style name, eg: transitionDuration
+ * @return {string} style name prefixed with `prefix`, properly camelCased, eg:
+ * WebkitTransitionDuration
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">prefixKey</span><span class="params">(prefix, key)</span> {</span>
+  <span class="keyword">return</span> prefix + key.charAt(<span class="number">0</span>).toUpperCase() + key.substring(<span class="number">1</span>);
+}
+
+<span class="comment">/**
+ * Support style names that may come passed in prefixed by adding permutations
+ * of vendor prefixes.
+ */</span>
+<span class="keyword">var</span> prefixes = [<span class="string">'Webkit'</span>, <span class="string">'ms'</span>, <span class="string">'Moz'</span>, <span class="string">'O'</span>];
+
+<span class="comment">// Using Object.keys here, or else the vanilla for-in loop makes IE8 go into an</span>
+<span class="comment">// infinite loop, because it iterates over the newly added props too.</span>
+Object.keys(isUnitlessNumber).forEach(<span class="function"><span class="keyword">function</span> <span class="params">(prop)</span> {</span>
+  prefixes.forEach(<span class="function"><span class="keyword">function</span> <span class="params">(prefix)</span> {</span>
+    isUnitlessNumber[prefixKey(prefix, prop)] = isUnitlessNumber[prop];
+  });
+});
+
+<span class="comment">/**
+ * Most style properties can be unset by doing .style[prop] = '' but IE8
+ * doesn't like doing that with shorthand properties so for the properties that
+ * IE8 breaks on, which are listed here, we instead unset each of the
+ * individual properties. See http://bugs.jquery.com/ticket/12385.
+ * The 4-value 'clock' properties like margin, padding, border-width seem to
+ * behave without any problems. Curiously, list-style works too without any
+ * special prodding.
+ */</span>
+<span class="keyword">var</span> shorthandPropertyExpansions = {
+  background: {
+    backgroundAttachment: <span class="literal">true</span>,
+    backgroundColor: <span class="literal">true</span>,
+    backgroundImage: <span class="literal">true</span>,
+    backgroundPositionX: <span class="literal">true</span>,
+    backgroundPositionY: <span class="literal">true</span>,
+    backgroundRepeat: <span class="literal">true</span>
+  },
+  backgroundPosition: {
+    backgroundPositionX: <span class="literal">true</span>,
+    backgroundPositionY: <span class="literal">true</span>
+  },
+  border: {
+    borderWidth: <span class="literal">true</span>,
+    borderStyle: <span class="literal">true</span>,
+    borderColor: <span class="literal">true</span>
+  },
+  borderBottom: {
+    borderBottomWidth: <span class="literal">true</span>,
+    borderBottomStyle: <span class="literal">true</span>,
+    borderBottomColor: <span class="literal">true</span>
+  },
+  borderLeft: {
+    borderLeftWidth: <span class="literal">true</span>,
+    borderLeftStyle: <span class="literal">true</span>,
+    borderLeftColor: <span class="literal">true</span>
+  },
+  borderRight: {
+    borderRightWidth: <span class="literal">true</span>,
+    borderRightStyle: <span class="literal">true</span>,
+    borderRightColor: <span class="literal">true</span>
+  },
+  borderTop: {
+    borderTopWidth: <span class="literal">true</span>,
+    borderTopStyle: <span class="literal">true</span>,
+    borderTopColor: <span class="literal">true</span>
+  },
+  font: {
+    fontStyle: <span class="literal">true</span>,
+    fontVariant: <span class="literal">true</span>,
+    fontWeight: <span class="literal">true</span>,
+    fontSize: <span class="literal">true</span>,
+    lineHeight: <span class="literal">true</span>,
+    fontFamily: <span class="literal">true</span>
+  },
+  outline: {
+    outlineWidth: <span class="literal">true</span>,
+    outlineStyle: <span class="literal">true</span>,
+    outlineColor: <span class="literal">true</span>
+  }
+};
+
+<span class="keyword">var</span> CSSProperty = {
+  isUnitlessNumber: isUnitlessNumber,
+  shorthandPropertyExpansions: shorthandPropertyExpansions
+};
+
+module.exports = CSSProperty;</code></pre>

@@ -1,0 +1,27 @@
+<h1>webpack.config.js</h1>
+<pre><code class="lang-js">module.exports = {
+  entry: <span class="string">'./hello_react.js'</span>,
+  module: {
+    loaders: [
+      {
+        test: <span class="regexp">/\.js$/</span>,
+        loader: <span class="string">'babel'</span>,
+        exclude: <span class="regexp">/node_modules/</span>,
+        query: {
+          presets: [<span class="string">'es2015'</span>, <span class="string">'react'</span>]
+        }
+      }
+    ],
+  },
+  devtool: <span class="string">"#source-map"</span>,
+  output: {
+    path: __dirname  + <span class="string">'/build'</span>,
+    filename: <span class="string">'[name].js'</span>,
+    publicPath: <span class="string">'http://localhost:8090/assets'</span>
+  },
+  resolve: {
+    extensions: [<span class="string">''</span>, <span class="string">'.js'</span>, <span class="string">'.jsx'</span>]
+  }
+
+};
+</code></pre>

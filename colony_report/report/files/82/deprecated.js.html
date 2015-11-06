@@ -1,0 +1,49 @@
+<h1>deprecated.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule deprecated
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> assign = require(<span class="string">'./Object.assign'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="comment">/**
+ * This will log a single deprecation notice per function and forward the call
+ * on to the new API.
+ *
+ * @param {string} fnName The name of the function
+ * @param {string} newModule The module that fn will exist in
+ * @param {string} newPackage The module that fn will exist in
+ * @param {*} ctx The context this forwarded call should run in
+ * @param {function} fn The function to forward on to
+ * @return {function} The function that will warn once and then call fn
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">deprecated</span><span class="params">(fnName, newModule, newPackage, ctx, fn)</span> {</span>
+  <span class="keyword">var</span> warned = <span class="literal">false</span>;
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    <span class="keyword">var</span> newFn = <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(warned,
+      <span class="comment">// Require examples in this string must be split to prevent React's</span>
+      <span class="comment">// build tools from mistaking them for real requires.</span>
+      <span class="comment">// Otherwise the build tools will attempt to build a '%s' module.</span>
+      <span class="string">'React.%s is deprecated. Please use %s.%s from require'</span> + <span class="string">'(\'%s\') '</span> + <span class="string">'instead.'</span>, fnName, newModule, fnName, newPackage) : <span class="literal">undefined</span>;
+      warned = <span class="literal">true</span>;
+      <span class="keyword">return</span> fn.apply(ctx, arguments);
+    };
+    <span class="comment">// We need to make sure all properties of the original fn are copied over.</span>
+    <span class="comment">// In particular, this is needed to support PropTypes</span>
+    <span class="keyword">return</span> assign(newFn, fn);
+  }
+
+  <span class="keyword">return</span> fn;
+}
+
+module.exports = deprecated;</code></pre>

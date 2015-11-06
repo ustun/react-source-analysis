@@ -1,0 +1,45 @@
+<h1>getEventModifierState.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule getEventModifierState
+ * @typechecks static-only
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="comment">/**
+ * Translation from modifier key to the associated property in the event.
+ * @see http://www.w3.org/TR/DOM-Level-3-Events/#keys-Modifiers
+ */</span>
+
+<span class="keyword">var</span> modifierKeyToProp = {
+  <span class="string">'Alt'</span>: <span class="string">'altKey'</span>,
+  <span class="string">'Control'</span>: <span class="string">'ctrlKey'</span>,
+  <span class="string">'Meta'</span>: <span class="string">'metaKey'</span>,
+  <span class="string">'Shift'</span>: <span class="string">'shiftKey'</span>
+};
+
+<span class="comment">// IE8 does not implement getModifierState so we simply map it to the only</span>
+<span class="comment">// modifier keys exposed by the event itself, does not support Lock-keys.</span>
+<span class="comment">// Currently, all major browsers except Chrome seems to support Lock-keys.</span>
+<span class="function"><span class="keyword">function</span> <span class="title">modifierStateGetter</span><span class="params">(keyArg)</span> {</span>
+  <span class="keyword">var</span> syntheticEvent = <span class="keyword">this</span>;
+  <span class="keyword">var</span> nativeEvent = syntheticEvent.nativeEvent;
+  <span class="keyword">if</span> (nativeEvent.getModifierState) {
+    <span class="keyword">return</span> nativeEvent.getModifierState(keyArg);
+  }
+  <span class="keyword">var</span> keyProp = modifierKeyToProp[keyArg];
+  <span class="keyword">return</span> keyProp ? !!nativeEvent[keyProp] : <span class="literal">false</span>;
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">getEventModifierState</span><span class="params">(nativeEvent)</span> {</span>
+  <span class="keyword">return</span> modifierStateGetter;
+}
+
+module.exports = getEventModifierState;</code></pre>

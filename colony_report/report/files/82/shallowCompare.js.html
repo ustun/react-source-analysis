@@ -1,0 +1,25 @@
+<h1>shallowCompare.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+* @providesModule shallowCompare
+*/</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> shallowEqual = require(<span class="string">'fbjs/lib/shallowEqual'</span>);
+
+<span class="comment">/**
+ * Does a shallow comparison for props and state.
+ * See ReactComponentWithPureRenderMixin
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">shallowCompare</span><span class="params">(instance, nextProps, nextState)</span> {</span>
+  <span class="keyword">return</span> !shallowEqual(instance.props, nextProps) || !shallowEqual(instance.state, nextState);
+}
+
+module.exports = shallowCompare;</code></pre>

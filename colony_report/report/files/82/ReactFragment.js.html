@@ -1,0 +1,65 @@
+<h1>ReactFragment.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactFragment
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ReactChildren = require(<span class="string">'./ReactChildren'</span>);
+<span class="keyword">var</span> ReactElement = require(<span class="string">'./ReactElement'</span>);
+
+<span class="keyword">var</span> emptyFunction = require(<span class="string">'fbjs/lib/emptyFunction'</span>);
+<span class="keyword">var</span> invariant = require(<span class="string">'fbjs/lib/invariant'</span>);
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="comment">/**
+ * We used to allow keyed objects to serve as a collection of ReactElements,
+ * or nested sets. This allowed us a way to explicitly key a set or fragment of
+ * components. This is now being replaced with an opaque data structure.
+ * The upgrade path is to call React.addons.createFragment({ key: value }) to
+ * create a keyed fragment. The resulting data structure is an array.
+ */</span>
+
+<span class="keyword">var</span> numericPropertyRegex = <span class="regexp">/^\d+$/</span>;
+
+<span class="keyword">var</span> warnedAboutNumeric = <span class="literal">false</span>;
+
+<span class="keyword">var</span> ReactFragment = {
+  <span class="comment">// Wrap a keyed object in an opaque proxy that warns you if you access any</span>
+  <span class="comment">// of its properties.</span>
+  create: <span class="function"><span class="keyword">function</span> <span class="params">(object)</span> {</span>
+    <span class="keyword">if</span> (<span class="keyword">typeof</span> object !== <span class="string">'object'</span> || !object || Array.isArray(object)) {
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'React.addons.createFragment only accepts a single object. Got: %s'</span>, object) : <span class="literal">undefined</span>;
+      <span class="keyword">return</span> object;
+    }
+    <span class="keyword">if</span> (ReactElement.isValidElement(object)) {
+      process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'React.addons.createFragment does not accept a ReactElement '</span> + <span class="string">'without a wrapper object.'</span>) : <span class="literal">undefined</span>;
+      <span class="keyword">return</span> object;
+    }
+
+    !(object.nodeType !== <span class="number">1</span>) ? process.env.NODE_ENV !== <span class="string">'production'</span> ? invariant(<span class="literal">false</span>, <span class="string">'React.addons.createFragment(...): Encountered an invalid child; DOM '</span> + <span class="string">'elements are not valid children of React components.'</span>) : invariant(<span class="literal">false</span>) : <span class="literal">undefined</span>;
+
+    <span class="keyword">var</span> result = [];
+
+    <span class="keyword">for</span> (<span class="keyword">var</span> key <span class="keyword">in</span> object) {
+      <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+        <span class="keyword">if</span> (!warnedAboutNumeric &amp;&amp; numericPropertyRegex.test(key)) {
+          process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'React.addons.createFragment(...): Child objects should have '</span> + <span class="string">'non-numeric keys so ordering is preserved.'</span>) : <span class="literal">undefined</span>;
+          warnedAboutNumeric = <span class="literal">true</span>;
+        }
+      }
+      ReactChildren.mapIntoWithKeyPrefixInternal(object[key], result, key, emptyFunction.thatReturnsArgument);
+    }
+
+    <span class="keyword">return</span> result;
+  }
+};
+
+module.exports = ReactFragment;</code></pre>

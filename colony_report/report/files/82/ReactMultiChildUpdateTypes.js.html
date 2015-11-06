@@ -1,0 +1,33 @@
+<h1>ReactMultiChildUpdateTypes.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactMultiChildUpdateTypes
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> keyMirror = require(<span class="string">'fbjs/lib/keyMirror'</span>);
+
+<span class="comment">/**
+ * When a component's children are updated, a series of update configuration
+ * objects are created in order to batch and serialize the required changes.
+ *
+ * Enumerates all the possible types of update configurations.
+ *
+ * @internal
+ */</span>
+<span class="keyword">var</span> ReactMultiChildUpdateTypes = keyMirror({
+  INSERT_MARKUP: <span class="literal">null</span>,
+  MOVE_EXISTING: <span class="literal">null</span>,
+  REMOVE_NODE: <span class="literal">null</span>,
+  SET_MARKUP: <span class="literal">null</span>,
+  TEXT_CONTENT: <span class="literal">null</span>
+});
+
+module.exports = ReactMultiChildUpdateTypes;</code></pre>

@@ -1,0 +1,48 @@
+<h1>Object.assign.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2014-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule Object.assign
+ */</span>
+
+<span class="comment">// https://people.mozilla.org/~jorendorff/es6-draft.html#sec-object.assign</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="function"><span class="keyword">function</span> <span class="title">assign</span><span class="params">(target, sources)</span> {</span>
+  <span class="keyword">if</span> (target == <span class="literal">null</span>) {
+    <span class="keyword">throw</span> <span class="keyword">new</span> TypeError(<span class="string">'Object.assign target cannot be null or undefined'</span>);
+  }
+
+  <span class="keyword">var</span> to = Object(target);
+  <span class="keyword">var</span> hasOwnProperty = Object.prototype.hasOwnProperty;
+
+  <span class="keyword">for</span> (<span class="keyword">var</span> nextIndex = <span class="number">1</span>; nextIndex &lt; arguments.length; nextIndex++) {
+    <span class="keyword">var</span> nextSource = arguments[nextIndex];
+    <span class="keyword">if</span> (nextSource == <span class="literal">null</span>) {
+      <span class="keyword">continue</span>;
+    }
+
+    <span class="keyword">var</span> from = Object(nextSource);
+
+    <span class="comment">// We don't currently support accessors nor proxies. Therefore this</span>
+    <span class="comment">// copy cannot throw. If we ever supported this then we must handle</span>
+    <span class="comment">// exceptions and side-effects. We don't support symbols so they won't</span>
+    <span class="comment">// be transferred.</span>
+
+    <span class="keyword">for</span> (<span class="keyword">var</span> key <span class="keyword">in</span> from) {
+      <span class="keyword">if</span> (hasOwnProperty.call(from, key)) {
+        to[key] = from[key];
+      }
+    }
+  }
+
+  <span class="keyword">return</span> to;
+}
+
+module.exports = assign;</code></pre>

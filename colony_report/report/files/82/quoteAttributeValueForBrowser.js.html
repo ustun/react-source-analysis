@@ -1,0 +1,27 @@
+<h1>quoteAttributeValueForBrowser.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule quoteAttributeValueForBrowser
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> escapeTextContentForBrowser = require(<span class="string">'./escapeTextContentForBrowser'</span>);
+
+<span class="comment">/**
+ * Escapes attribute value to prevent scripting attacks.
+ *
+ * @param {*} value Value to escape.
+ * @return {string} An escaped string.
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">quoteAttributeValueForBrowser</span><span class="params">(value)</span> {</span>
+  <span class="keyword">return</span> <span class="string">'"'</span> + escapeTextContentForBrowser(value) + <span class="string">'"'</span>;
+}
+
+module.exports = quoteAttributeValueForBrowser;</code></pre>

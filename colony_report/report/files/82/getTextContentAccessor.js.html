@@ -1,0 +1,34 @@
+<h1>getTextContentAccessor.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2013-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule getTextContentAccessor
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> ExecutionEnvironment = require(<span class="string">'fbjs/lib/ExecutionEnvironment'</span>);
+
+<span class="keyword">var</span> contentKey = <span class="literal">null</span>;
+
+<span class="comment">/**
+ * Gets the key used to access text content on a DOM node.
+ *
+ * @return {?string} Key used to access text content.
+ * @internal
+ */</span>
+<span class="function"><span class="keyword">function</span> <span class="title">getTextContentAccessor</span><span class="params">()</span> {</span>
+  <span class="keyword">if</span> (!contentKey &amp;&amp; ExecutionEnvironment.canUseDOM) {
+    <span class="comment">// Prefer textContent to innerText because many browsers support both but</span>
+    <span class="comment">// SVG &lt;text> elements don't support innerText even when &lt;div> does.</span>
+    contentKey = <span class="string">'textContent'</span> <span class="keyword">in</span> document.documentElement ? <span class="string">'textContent'</span> : <span class="string">'innerText'</span>;
+  }
+  <span class="keyword">return</span> contentKey;
+}
+
+module.exports = getTextContentAccessor;</code></pre>

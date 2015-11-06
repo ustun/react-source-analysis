@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Plato - validateDOMNesting.js</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="">
+  <meta name="author" content="">
+
+  <!--[if lt IE 9]>
+  <script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+  <![endif]-->
+
+  <link href="../../assets/css/vendor/morris.css" rel="stylesheet">
+  <link href="../../assets/css/vendor/bootstrap.css" rel="stylesheet">
+  <link href="../../assets/css/vendor/font-awesome.css" rel="stylesheet">
+  <link href="../../assets/css/vendor/codemirror.css" rel="stylesheet">
+  <link href="../../assets/css/plato.css" rel="stylesheet">
+  <link href="../../assets/css/plato-file.css" rel="stylesheet">
+
+</head>
+
+<body>
+
+<div class="navbar navbar-fixed-top">
+  <div class="container">
+    <a class="navbar-brand" href="http://github.com/es-analysis/plato">Plato on Github</a>
+    <ul class="nav navbar-nav">
+      <li>
+        <a href="../../index.html">Report Home</a>
+      </li>
+    </ul>
+  </div>
+</div>
+
+<div class="jumbotron">
+  <div class="container">
+    <h1>validateDOMNesting.js</h1>
+  </div>
+</div>
+
+<div class="container aggregate-stats">
+  <div class="row">
+    <div class="col-md-6">
+      <h2 class="header">Maintainability <a href="http://blogs.msdn.com/b/codeanalysis/archive/2007/11/20/maintainability-index-range-and-meaning.aspx"><i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="A value between 0 and 100 that represents the relative ease of maintaining the code. A high value means better maintainability." data-original-title="Maintainability Index"  data-container="body"></i></a></h2>
+      <p class="stat">51.56</p>
+    </div>
+    <div class="col-md-6">
+      <h2 class="header">Lines of code <i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="Source Lines of Code / Logical Lines of Code" data-original-title="SLOC/LSLOC" data-container="body"></i></h2>
+      <p class="stat">352</p>
+    </div>
+  </div>
+  <div class="row historical">
+    <div class="col-md-6">
+      <p id="chart_historical_maint" class="chart"></p>
+    </div>
+    <div class="col-md-6">
+      <p id="chart_historical_sloc" class="chart"></p>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col-md-6">
+      <h2 class="header">Difficulty  <a href="http://en.wikipedia.org/wiki/Halstead_complexity_measures"><i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="The difficulty measure is related to the difficulty of the program to write or understand." data-original-title="Difficulty" data-container="body"></i></a></h2>
+      <p class="stat">48.16</p>
+    </div>
+    <div class="col-md-6">
+      <h2 class="header">Estimated Errors  <a href="http://en.wikipedia.org/wiki/Halstead_complexity_measures"><i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="Halstead's delivered bugs is an estimate for the number of errors in the implementation." data-original-title="Delivered Bugs" data-container="body"></i></a></h2>
+      <p class="stat">3.03</p>
+    </div>
+  </div>
+</div>
+
+<div class="container charts">
+  <div class="row">
+    <h2 class="header">Function weight</h2>
+  </div>
+  <div class="row">
+    <div class="col-md-6">
+      <h3 class="chart-header">By Complexity <a href="http://en.wikipedia.org/wiki/Cyclomatic_complexity"><i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="This metric counts the number of distinct paths through a block of code. Lower values are better." data-original-title="Cyclomatic Complexity" data-container="body"></i></a></h3>
+      <div id="fn-by-complexity" class="stat"></div>
+    </div>
+    <div class="col-md-6">
+      <h3 class="chart-header">By SLOC  <i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="Source Lines of Code / Logical Lines of Code" data-original-title="SLOC/LSLOC" data-container="body"></i></h3>
+      <div id="fn-by-sloc" class="stat"></div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="row">
+    <textarea id="file-source" class="col-md-12">/**
+ * Copyright 2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule validateDOMNesting
+ */
+
+&#039;use strict&#039;;
+
+var assign = require(&#039;./Object.assign&#039;);
+var emptyFunction = require(&#039;fbjs/lib/emptyFunction&#039;);
+var warning = require(&#039;fbjs/lib/warning&#039;);
+
+var validateDOMNesting = emptyFunction;
+
+if (process.env.NODE_ENV !== &#039;production&#039;) {
+  // This validation code was written based on the HTML5 parsing spec:
+  // https://html.spec.whatwg.org/multipage/syntax.html#has-an-element-in-scope
+  //
+  // Note: this does not catch all invalid nesting, nor does it try to (as it&#039;s
+  // not clear what practical benefit doing so provides); instead, we warn only
+  // for cases where the parser will give a parse tree differing from what React
+  // intended. For example, &lt;b&gt;&lt;div&gt;&lt;/div&gt;&lt;/b&gt; is invalid but we don&#039;t warn
+  // because it still parses correctly; we do warn for other cases like nested
+  // &lt;p&gt; tags where the beginning of the second element implicitly closes the
+  // first, causing a confusing mess.
+
+  // https://html.spec.whatwg.org/multipage/syntax.html#special
+  var specialTags = [&#039;address&#039;, &#039;applet&#039;, &#039;area&#039;, &#039;article&#039;, &#039;aside&#039;, &#039;base&#039;, &#039;basefont&#039;, &#039;bgsound&#039;, &#039;blockquote&#039;, &#039;body&#039;, &#039;br&#039;, &#039;button&#039;, &#039;caption&#039;, &#039;center&#039;, &#039;col&#039;, &#039;colgroup&#039;, &#039;dd&#039;, &#039;details&#039;, &#039;dir&#039;, &#039;div&#039;, &#039;dl&#039;, &#039;dt&#039;, &#039;embed&#039;, &#039;fieldset&#039;, &#039;figcaption&#039;, &#039;figure&#039;, &#039;footer&#039;, &#039;form&#039;, &#039;frame&#039;, &#039;frameset&#039;, &#039;h1&#039;, &#039;h2&#039;, &#039;h3&#039;, &#039;h4&#039;, &#039;h5&#039;, &#039;h6&#039;, &#039;head&#039;, &#039;header&#039;, &#039;hgroup&#039;, &#039;hr&#039;, &#039;html&#039;, &#039;iframe&#039;, &#039;img&#039;, &#039;input&#039;, &#039;isindex&#039;, &#039;li&#039;, &#039;link&#039;, &#039;listing&#039;, &#039;main&#039;, &#039;marquee&#039;, &#039;menu&#039;, &#039;menuitem&#039;, &#039;meta&#039;, &#039;nav&#039;, &#039;noembed&#039;, &#039;noframes&#039;, &#039;noscript&#039;, &#039;object&#039;, &#039;ol&#039;, &#039;p&#039;, &#039;param&#039;, &#039;plaintext&#039;, &#039;pre&#039;, &#039;script&#039;, &#039;section&#039;, &#039;select&#039;, &#039;source&#039;, &#039;style&#039;, &#039;summary&#039;, &#039;table&#039;, &#039;tbody&#039;, &#039;td&#039;, &#039;template&#039;, &#039;textarea&#039;, &#039;tfoot&#039;, &#039;th&#039;, &#039;thead&#039;, &#039;title&#039;, &#039;tr&#039;, &#039;track&#039;, &#039;ul&#039;, &#039;wbr&#039;, &#039;xmp&#039;];
+
+  // https://html.spec.whatwg.org/multipage/syntax.html#has-an-element-in-scope
+  var inScopeTags = [&#039;applet&#039;, &#039;caption&#039;, &#039;html&#039;, &#039;table&#039;, &#039;td&#039;, &#039;th&#039;, &#039;marquee&#039;, &#039;object&#039;, &#039;template&#039;,
+
+  // https://html.spec.whatwg.org/multipage/syntax.html#html-integration-point
+  // TODO: Distinguish by namespace here -- for &lt;title&gt;, including it here
+  // errs on the side of fewer warnings
+  &#039;foreignObject&#039;, &#039;desc&#039;, &#039;title&#039;];
+
+  // https://html.spec.whatwg.org/multipage/syntax.html#has-an-element-in-button-scope
+  var buttonScopeTags = inScopeTags.concat([&#039;button&#039;]);
+
+  // https://html.spec.whatwg.org/multipage/syntax.html#generate-implied-end-tags
+  var impliedEndTags = [&#039;dd&#039;, &#039;dt&#039;, &#039;li&#039;, &#039;option&#039;, &#039;optgroup&#039;, &#039;p&#039;, &#039;rp&#039;, &#039;rt&#039;];
+
+  var emptyAncestorInfo = {
+    parentTag: null,
+
+    formTag: null,
+    aTagInScope: null,
+    buttonTagInScope: null,
+    nobrTagInScope: null,
+    pTagInButtonScope: null,
+
+    listItemTagAutoclosing: null,
+    dlItemTagAutoclosing: null
+  };
+
+  var updatedAncestorInfo = function (oldInfo, tag, instance) {
+    var ancestorInfo = assign({}, oldInfo || emptyAncestorInfo);
+    var info = { tag: tag, instance: instance };
+
+    if (inScopeTags.indexOf(tag) !== -1) {
+      ancestorInfo.aTagInScope = null;
+      ancestorInfo.buttonTagInScope = null;
+      ancestorInfo.nobrTagInScope = null;
+    }
+    if (buttonScopeTags.indexOf(tag) !== -1) {
+      ancestorInfo.pTagInButtonScope = null;
+    }
+
+    // See rules for &#039;li&#039;, &#039;dd&#039;, &#039;dt&#039; start tags in
+    // https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-inbody
+    if (specialTags.indexOf(tag) !== -1 &amp;&amp; tag !== &#039;address&#039; &amp;&amp; tag !== &#039;div&#039; &amp;&amp; tag !== &#039;p&#039;) {
+      ancestorInfo.listItemTagAutoclosing = null;
+      ancestorInfo.dlItemTagAutoclosing = null;
+    }
+
+    ancestorInfo.parentTag = info;
+
+    if (tag === &#039;form&#039;) {
+      ancestorInfo.formTag = info;
+    }
+    if (tag === &#039;a&#039;) {
+      ancestorInfo.aTagInScope = info;
+    }
+    if (tag === &#039;button&#039;) {
+      ancestorInfo.buttonTagInScope = info;
+    }
+    if (tag === &#039;nobr&#039;) {
+      ancestorInfo.nobrTagInScope = info;
+    }
+    if (tag === &#039;p&#039;) {
+      ancestorInfo.pTagInButtonScope = info;
+    }
+    if (tag === &#039;li&#039;) {
+      ancestorInfo.listItemTagAutoclosing = info;
+    }
+    if (tag === &#039;dd&#039; || tag === &#039;dt&#039;) {
+      ancestorInfo.dlItemTagAutoclosing = info;
+    }
+
+    return ancestorInfo;
+  };
+
+  /**
+   * Returns whether
+   */
+  var isTagValidWithParent = function (tag, parentTag) {
+    // First, let&#039;s check if we&#039;re in an unusual parsing mode...
+    switch (parentTag) {
+      // https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-inselect
+      case &#039;select&#039;:
+        return tag === &#039;option&#039; || tag === &#039;optgroup&#039; || tag === &#039;#text&#039;;
+      case &#039;optgroup&#039;:
+        return tag === &#039;option&#039; || tag === &#039;#text&#039;;
+      // Strictly speaking, seeing an &lt;option&gt; doesn&#039;t mean we&#039;re in a &lt;select&gt;
+      // but
+      case &#039;option&#039;:
+        return tag === &#039;#text&#039;;
+
+      // https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-intd
+      // https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-incaption
+      // No special behavior since these rules fall back to &quot;in body&quot; mode for
+      // all except special table nodes which cause bad parsing behavior anyway.
+
+      // https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-intr
+      case &#039;tr&#039;:
+        return tag === &#039;th&#039; || tag === &#039;td&#039; || tag === &#039;style&#039; || tag === &#039;script&#039; || tag === &#039;template&#039;;
+
+      // https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-intbody
+      case &#039;tbody&#039;:
+      case &#039;thead&#039;:
+      case &#039;tfoot&#039;:
+        return tag === &#039;tr&#039; || tag === &#039;style&#039; || tag === &#039;script&#039; || tag === &#039;template&#039;;
+
+      // https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-incolgroup
+      case &#039;colgroup&#039;:
+        return tag === &#039;col&#039; || tag === &#039;template&#039;;
+
+      // https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-intable
+      case &#039;table&#039;:
+        return tag === &#039;caption&#039; || tag === &#039;colgroup&#039; || tag === &#039;tbody&#039; || tag === &#039;tfoot&#039; || tag === &#039;thead&#039; || tag === &#039;style&#039; || tag === &#039;script&#039; || tag === &#039;template&#039;;
+
+      // https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-inhead
+      case &#039;head&#039;:
+        return tag === &#039;base&#039; || tag === &#039;basefont&#039; || tag === &#039;bgsound&#039; || tag === &#039;link&#039; || tag === &#039;meta&#039; || tag === &#039;title&#039; || tag === &#039;noscript&#039; || tag === &#039;noframes&#039; || tag === &#039;style&#039; || tag === &#039;script&#039; || tag === &#039;template&#039;;
+
+      // https://html.spec.whatwg.org/multipage/semantics.html#the-html-element
+      case &#039;html&#039;:
+        return tag === &#039;head&#039; || tag === &#039;body&#039;;
+    }
+
+    // Probably in the &quot;in body&quot; parsing mode, so we outlaw only tag combos
+    // where the parsing rules cause implicit opens or closes to be added.
+    // https://html.spec.whatwg.org/multipage/syntax.html#parsing-main-inbody
+    switch (tag) {
+      case &#039;h1&#039;:
+      case &#039;h2&#039;:
+      case &#039;h3&#039;:
+      case &#039;h4&#039;:
+      case &#039;h5&#039;:
+      case &#039;h6&#039;:
+        return parentTag !== &#039;h1&#039; &amp;&amp; parentTag !== &#039;h2&#039; &amp;&amp; parentTag !== &#039;h3&#039; &amp;&amp; parentTag !== &#039;h4&#039; &amp;&amp; parentTag !== &#039;h5&#039; &amp;&amp; parentTag !== &#039;h6&#039;;
+
+      case &#039;rp&#039;:
+      case &#039;rt&#039;:
+        return impliedEndTags.indexOf(parentTag) === -1;
+
+      case &#039;caption&#039;:
+      case &#039;col&#039;:
+      case &#039;colgroup&#039;:
+      case &#039;frame&#039;:
+      case &#039;head&#039;:
+      case &#039;tbody&#039;:
+      case &#039;td&#039;:
+      case &#039;tfoot&#039;:
+      case &#039;th&#039;:
+      case &#039;thead&#039;:
+      case &#039;tr&#039;:
+        // These tags are only valid with a few parents that have special child
+        // parsing rules -- if we&#039;re down here, then none of those matched and
+        // so we allow it only if we don&#039;t know what the parent is, as all other
+        // cases are invalid.
+        return parentTag == null;
+    }
+
+    return true;
+  };
+
+  /**
+   * Returns whether
+   */
+  var findInvalidAncestorForTag = function (tag, ancestorInfo) {
+    switch (tag) {
+      case &#039;address&#039;:
+      case &#039;article&#039;:
+      case &#039;aside&#039;:
+      case &#039;blockquote&#039;:
+      case &#039;center&#039;:
+      case &#039;details&#039;:
+      case &#039;dialog&#039;:
+      case &#039;dir&#039;:
+      case &#039;div&#039;:
+      case &#039;dl&#039;:
+      case &#039;fieldset&#039;:
+      case &#039;figcaption&#039;:
+      case &#039;figure&#039;:
+      case &#039;footer&#039;:
+      case &#039;header&#039;:
+      case &#039;hgroup&#039;:
+      case &#039;main&#039;:
+      case &#039;menu&#039;:
+      case &#039;nav&#039;:
+      case &#039;ol&#039;:
+      case &#039;p&#039;:
+      case &#039;section&#039;:
+      case &#039;summary&#039;:
+      case &#039;ul&#039;:
+
+      case &#039;pre&#039;:
+      case &#039;listing&#039;:
+
+      case &#039;table&#039;:
+
+      case &#039;hr&#039;:
+
+      case &#039;xmp&#039;:
+
+      case &#039;h1&#039;:
+      case &#039;h2&#039;:
+      case &#039;h3&#039;:
+      case &#039;h4&#039;:
+      case &#039;h5&#039;:
+      case &#039;h6&#039;:
+        return ancestorInfo.pTagInButtonScope;
+
+      case &#039;form&#039;:
+        return ancestorInfo.formTag || ancestorInfo.pTagInButtonScope;
+
+      case &#039;li&#039;:
+        return ancestorInfo.listItemTagAutoclosing;
+
+      case &#039;dd&#039;:
+      case &#039;dt&#039;:
+        return ancestorInfo.dlItemTagAutoclosing;
+
+      case &#039;button&#039;:
+        return ancestorInfo.buttonTagInScope;
+
+      case &#039;a&#039;:
+        // Spec says something about storing a list of markers, but it sounds
+        // equivalent to this check.
+        return ancestorInfo.aTagInScope;
+
+      case &#039;nobr&#039;:
+        return ancestorInfo.nobrTagInScope;
+    }
+
+    return null;
+  };
+
+  /**
+   * Given a ReactCompositeComponent instance, return a list of its recursive
+   * owners, starting at the root and ending with the instance itself.
+   */
+  var findOwnerStack = function (instance) {
+    if (!instance) {
+      return [];
+    }
+
+    var stack = [];
+    /*eslint-disable space-after-keywords */
+    do {
+      /*eslint-enable space-after-keywords */
+      stack.push(instance);
+    } while (instance = instance._currentElement._owner);
+    stack.reverse();
+    return stack;
+  };
+
+  var didWarn = {};
+
+  validateDOMNesting = function (childTag, childInstance, ancestorInfo) {
+    ancestorInfo = ancestorInfo || emptyAncestorInfo;
+    var parentInfo = ancestorInfo.parentTag;
+    var parentTag = parentInfo &amp;&amp; parentInfo.tag;
+
+    var invalidParent = isTagValidWithParent(childTag, parentTag) ? null : parentInfo;
+    var invalidAncestor = invalidParent ? null : findInvalidAncestorForTag(childTag, ancestorInfo);
+    var problematic = invalidParent || invalidAncestor;
+
+    if (problematic) {
+      var ancestorTag = problematic.tag;
+      var ancestorInstance = problematic.instance;
+
+      var childOwner = childInstance &amp;&amp; childInstance._currentElement._owner;
+      var ancestorOwner = ancestorInstance &amp;&amp; ancestorInstance._currentElement._owner;
+
+      var childOwners = findOwnerStack(childOwner);
+      var ancestorOwners = findOwnerStack(ancestorOwner);
+
+      var minStackLen = Math.min(childOwners.length, ancestorOwners.length);
+      var i;
+
+      var deepestCommon = -1;
+      for (i = 0; i &lt; minStackLen; i++) {
+        if (childOwners[i] === ancestorOwners[i]) {
+          deepestCommon = i;
+        } else {
+          break;
+        }
+      }
+
+      var UNKNOWN = &#039;(unknown)&#039;;
+      var childOwnerNames = childOwners.slice(deepestCommon + 1).map(function (inst) {
+        return inst.getName() || UNKNOWN;
+      });
+      var ancestorOwnerNames = ancestorOwners.slice(deepestCommon + 1).map(function (inst) {
+        return inst.getName() || UNKNOWN;
+      });
+      var ownerInfo = [].concat(
+      // If the parent and child instances have a common owner ancestor, start
+      // with that -- otherwise we just start with the parent&#039;s owners.
+      deepestCommon !== -1 ? childOwners[deepestCommon].getName() || UNKNOWN : [], ancestorOwnerNames, ancestorTag,
+      // If we&#039;re warning about an invalid (non-parent) ancestry, add &#039;...&#039;
+      invalidAncestor ? [&#039;...&#039;] : [], childOwnerNames, childTag).join(&#039; &gt; &#039;);
+
+      var warnKey = !!invalidParent + &#039;|&#039; + childTag + &#039;|&#039; + ancestorTag + &#039;|&#039; + ownerInfo;
+      if (didWarn[warnKey]) {
+        return;
+      }
+      didWarn[warnKey] = true;
+
+      if (invalidParent) {
+        var info = &#039;&#039;;
+        if (ancestorTag === &#039;table&#039; &amp;&amp; childTag === &#039;tr&#039;) {
+          info += &#039; Add a &lt;tbody&gt; to your code to match the DOM tree generated by &#039; + &#039;the browser.&#039;;
+        }
+        process.env.NODE_ENV !== &#039;production&#039; ? warning(false, &#039;validateDOMNesting(...): &lt;%s&gt; cannot appear as a child of &lt;%s&gt;. &#039; + &#039;See %s.%s&#039;, childTag, ancestorTag, ownerInfo, info) : undefined;
+      } else {
+        process.env.NODE_ENV !== &#039;production&#039; ? warning(false, &#039;validateDOMNesting(...): &lt;%s&gt; cannot appear as a descendant of &#039; + &#039;&lt;%s&gt;. See %s.&#039;, childTag, ancestorTag, ownerInfo) : undefined;
+      }
+    }
+  };
+
+  validateDOMNesting.ancestorInfoContextKey = &#039;__validateDOMNesting_ancestorInfo$&#039; + Math.random().toString(36).slice(2);
+
+  validateDOMNesting.updatedAncestorInfo = updatedAncestorInfo;
+
+  // For testing
+  validateDOMNesting.isTagValidInContext = function (tag, ancestorInfo) {
+    ancestorInfo = ancestorInfo || emptyAncestorInfo;
+    var parentInfo = ancestorInfo.parentTag;
+    var parentTag = parentInfo &amp;&amp; parentInfo.tag;
+    return isTagValidWithParent(tag, parentTag) &amp;&amp; !findInvalidAncestorForTag(tag, ancestorInfo);
+  };
+}
+
+module.exports = validateDOMNesting;</textarea>
+  </div>
+</div>
+
+<footer class="footer">
+  <div class="container">
+    <p>.</p>
+  </div>
+</footer>
+
+<script type="text/html" id="complexity-popover-template">
+  <div class="complexity-notice">
+    Complexity : {{ complexity.cyclomatic }} <br>
+    Length : {{ complexity.halstead.length }} <br>
+    Difficulty : {{ complexity.halstead.difficulty.toFixed(2) }} <br>
+    Est # bugs : {{ complexity.halstead.bugs.toFixed(2) }}<br>
+  </div>
+</script>
+
+<script type="text/javascript" src="../../assets/scripts/bundles/core-bundle.js"></script>
+<script type="text/javascript" src="../../assets/scripts/bundles/codemirror.js"></script>
+<script type="text/javascript" src="../../assets/scripts/codemirror.markpopovertext.js"></script>
+<script type="text/javascript" src="report.js"></script>
+<script type="text/javascript" src="report.history.js"></script>
+<script type="text/javascript" src="../../assets/scripts/plato-file.js"></script>
+</body>
+</html>

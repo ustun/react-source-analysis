@@ -1,0 +1,119 @@
+<h1>ReactNoopUpdateQueue.js</h1>
+<pre><code class="lang-js"><span class="comment">/**
+ * Copyright 2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @providesModule ReactNoopUpdateQueue
+ */</span>
+
+<span class="string">'use strict'</span>;
+
+<span class="keyword">var</span> warning = require(<span class="string">'fbjs/lib/warning'</span>);
+
+<span class="function"><span class="keyword">function</span> <span class="title">warnTDZ</span><span class="params">(publicInstance, callerName)</span> {</span>
+  <span class="keyword">if</span> (process.env.NODE_ENV !== <span class="string">'production'</span>) {
+    process.env.NODE_ENV !== <span class="string">'production'</span> ? warning(<span class="literal">false</span>, <span class="string">'%s(...): Can only update a mounted or mounting component. '</span> + <span class="string">'This usually means you called %s() on an unmounted component. '</span> + <span class="string">'This is a no-op. Please check the code for the %s component.'</span>, callerName, callerName, publicInstance.constructor &amp;&amp; publicInstance.constructor.displayName || <span class="string">''</span>) : <span class="literal">undefined</span>;
+  }
+}
+
+<span class="comment">/**
+ * This is the abstract API for an update queue.
+ */</span>
+<span class="keyword">var</span> ReactNoopUpdateQueue = {
+
+  <span class="comment">/**
+   * Checks whether or not this composite component is mounted.
+   * @param {ReactClass} publicInstance The instance we want to test.
+   * @return {boolean} True if mounted, false otherwise.
+   * @protected
+   * @final
+   */</span>
+  isMounted: <span class="function"><span class="keyword">function</span> <span class="params">(publicInstance)</span> {</span>
+    <span class="keyword">return</span> <span class="literal">false</span>;
+  },
+
+  <span class="comment">/**
+   * Enqueue a callback that will be executed after all the pending updates
+   * have processed.
+   *
+   * @param {ReactClass} publicInstance The instance to use as `this` context.
+   * @param {?function} callback Called after state is updated.
+   * @internal
+   */</span>
+  enqueueCallback: <span class="function"><span class="keyword">function</span> <span class="params">(publicInstance, callback)</span> {</span>},
+
+  <span class="comment">/**
+   * Forces an update. This should only be invoked when it is known with
+   * certainty that we are **not** in a DOM transaction.
+   *
+   * You may want to call this when you know that some deeper aspect of the
+   * component's state has changed but `setState` was not called.
+   *
+   * This will not invoke `shouldComponentUpdate`, but it will invoke
+   * `componentWillUpdate` and `componentDidUpdate`.
+   *
+   * @param {ReactClass} publicInstance The instance that should rerender.
+   * @internal
+   */</span>
+  enqueueForceUpdate: <span class="function"><span class="keyword">function</span> <span class="params">(publicInstance)</span> {</span>
+    warnTDZ(publicInstance, <span class="string">'forceUpdate'</span>);
+  },
+
+  <span class="comment">/**
+   * Replaces all of the state. Always use this or `setState` to mutate state.
+   * You should treat `this.state` as immutable.
+   *
+   * There is no guarantee that `this.state` will be immediately updated, so
+   * accessing `this.state` after calling this method may return the old value.
+   *
+   * @param {ReactClass} publicInstance The instance that should rerender.
+   * @param {object} completeState Next state.
+   * @internal
+   */</span>
+  enqueueReplaceState: <span class="function"><span class="keyword">function</span> <span class="params">(publicInstance, completeState)</span> {</span>
+    warnTDZ(publicInstance, <span class="string">'replaceState'</span>);
+  },
+
+  <span class="comment">/**
+   * Sets a subset of the state. This only exists because _pendingState is
+   * internal. This provides a merging strategy that is not available to deep
+   * properties which is confusing. TODO: Expose pendingState or don't use it
+   * during the merge.
+   *
+   * @param {ReactClass} publicInstance The instance that should rerender.
+   * @param {object} partialState Next partial state to be merged with state.
+   * @internal
+   */</span>
+  enqueueSetState: <span class="function"><span class="keyword">function</span> <span class="params">(publicInstance, partialState)</span> {</span>
+    warnTDZ(publicInstance, <span class="string">'setState'</span>);
+  },
+
+  <span class="comment">/**
+   * Sets a subset of the props.
+   *
+   * @param {ReactClass} publicInstance The instance that should rerender.
+   * @param {object} partialProps Subset of the next props.
+   * @internal
+   */</span>
+  enqueueSetProps: <span class="function"><span class="keyword">function</span> <span class="params">(publicInstance, partialProps)</span> {</span>
+    warnTDZ(publicInstance, <span class="string">'setProps'</span>);
+  },
+
+  <span class="comment">/**
+   * Replaces all of the props.
+   *
+   * @param {ReactClass} publicInstance The instance that should rerender.
+   * @param {object} props New props.
+   * @internal
+   */</span>
+  enqueueReplaceProps: <span class="function"><span class="keyword">function</span> <span class="params">(publicInstance, props)</span> {</span>
+    warnTDZ(publicInstance, <span class="string">'replaceProps'</span>);
+  }
+
+};
+
+module.exports = ReactNoopUpdateQueue;</code></pre>
