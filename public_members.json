@@ -1,0 +1,1449 @@
+[
+    {
+        "module": "accumulate",
+        "members": []
+    },
+    {
+        "module": "accumulateInto",
+        "members": []
+    },
+    {
+        "module": "adler32",
+        "members": []
+    },
+    {
+        "module": "analyze_modules",
+        "members": []
+    },
+    {
+        "module": "analyze_public_members",
+        "members": []
+    },
+    {
+        "module": "AutoFocusUtils",
+        "members": [
+            "focusDOMComponent"
+        ]
+    },
+    {
+        "module": "BeforeInputEventPlugin",
+        "members": [
+            "eventTypes",
+            "extractEvents"
+        ]
+    },
+    {
+        "module": "CallbackQueue",
+        "members": [
+            "instancePool",
+            "getPooled",
+            "poolSize",
+            "release"
+        ]
+    },
+    {
+        "module": "canDefineProperty",
+        "members": []
+    },
+    {
+        "module": "ChangeEventPlugin",
+        "members": [
+            "eventTypes",
+            "extractEvents"
+        ]
+    },
+    {
+        "module": "cloneWithProps",
+        "members": []
+    },
+    {
+        "module": "createHierarchyRenderer",
+        "members": []
+    },
+    {
+        "module": "CSSProperty",
+        "members": [
+            "isUnitlessNumber",
+            "shorthandPropertyExpansions"
+        ]
+    },
+    {
+        "module": "CSSPropertyOperations",
+        "members": [
+            "createMarkupForStyles",
+            "setValueForStyles"
+        ]
+    },
+    {
+        "module": "Danger",
+        "members": [
+            "dangerouslyRenderMarkup",
+            "dangerouslyReplaceNodeWithMarkup"
+        ]
+    },
+    {
+        "module": "dangerousStyleValue",
+        "members": []
+    },
+    {
+        "module": "DefaultEventPluginOrder",
+        "members": []
+    },
+    {
+        "module": "deprecated",
+        "members": []
+    },
+    {
+        "module": "DOMChildrenOperations",
+        "members": [
+            "dangerouslyReplaceNodeWithMarkup",
+            "updateTextContent",
+            "processUpdates"
+        ]
+    },
+    {
+        "module": "DOMLazyTree",
+        "members": [
+            "insertTreeBefore",
+            "replaceChildWithTree",
+            "queueChild",
+            "queueHTML",
+            "queueText"
+        ]
+    },
+    {
+        "module": "DOMNamespaces",
+        "members": [
+            "html",
+            "mathml",
+            "svg"
+        ]
+    },
+    {
+        "module": "DOMProperty",
+        "members": [
+            "ID_ATTRIBUTE_NAME",
+            "ROOT_ATTRIBUTE_NAME",
+            "properties",
+            "getPossibleStandardName",
+            "_isCustomAttributeFunctions",
+            "isCustomAttribute",
+            "getDefaultValueForProperty",
+            "injection"
+        ]
+    },
+    {
+        "module": "DOMPropertyOperations",
+        "members": [
+            "createMarkupForID",
+            "setAttributeForID",
+            "createMarkupForRoot",
+            "setAttributeForRoot",
+            "createMarkupForProperty",
+            "createMarkupForCustomAttribute",
+            "setValueForProperty",
+            "setValueForAttribute",
+            "deleteValueForProperty"
+        ]
+    },
+    {
+        "module": "EnterLeaveEventPlugin",
+        "members": [
+            "eventTypes",
+            "extractEvents"
+        ]
+    },
+    {
+        "module": "escapeTextContentForBrowser",
+        "members": []
+    },
+    {
+        "module": "EventConstants",
+        "members": [
+            "topLevelTypes",
+            "PropagationPhases"
+        ]
+    },
+    {
+        "module": "EventPluginHub",
+        "members": [
+            "injection",
+            "putListener",
+            "getListener",
+            "deleteListener",
+            "deleteAllListeners",
+            "extractEvents",
+            "enqueueEvents",
+            "processEventQueue",
+            "__purge",
+            "__getListenerBank"
+        ]
+    },
+    {
+        "module": "EventPluginRegistry",
+        "members": [
+            "plugins",
+            "eventNameDispatchConfigs",
+            "registrationNameModules",
+            "registrationNameDependencies",
+            "possibleRegistrationNames",
+            "injectEventPluginOrder",
+            "injectEventPluginsByName",
+            "getPluginModuleForEvent",
+            "_resetEventPlugins"
+        ]
+    },
+    {
+        "module": "EventPluginUtils",
+        "members": [
+            "isEndish",
+            "isMoveish",
+            "isStartish",
+            "executeDirectDispatch",
+            "executeDispatchesInOrder",
+            "executeDispatchesInOrderStopAtTrue",
+            "hasDispatches",
+            "getInstanceFromNode",
+            "getNodeFromInstance",
+            "isAncestor",
+            "getLowestCommonAncestor",
+            "getParentInstance",
+            "traverseTwoPhase",
+            "traverseEnterLeave",
+            "injection"
+        ]
+    },
+    {
+        "module": "EventPropagators",
+        "members": [
+            "accumulateTwoPhaseDispatches",
+            "accumulateTwoPhaseDispatchesSkipTarget",
+            "accumulateDirectDispatches",
+            "accumulateEnterLeaveDispatches"
+        ]
+    },
+    {
+        "module": "FallbackCompositionState",
+        "members": [
+            "instancePool",
+            "getPooled",
+            "poolSize",
+            "release"
+        ]
+    },
+    {
+        "module": "find_required_modules",
+        "members": []
+    },
+    {
+        "module": "findDOMNode",
+        "members": []
+    },
+    {
+        "module": "flattenChildren",
+        "members": []
+    },
+    {
+        "module": "forEachAccumulated",
+        "members": []
+    },
+    {
+        "module": "getEventCharCode",
+        "members": []
+    },
+    {
+        "module": "getEventKey",
+        "members": []
+    },
+    {
+        "module": "getEventModifierState",
+        "members": []
+    },
+    {
+        "module": "getEventTarget",
+        "members": []
+    },
+    {
+        "module": "getIteratorFn",
+        "members": []
+    },
+    {
+        "module": "getNativeComponentFromComposite",
+        "members": []
+    },
+    {
+        "module": "getNodeForCharacterOffset",
+        "members": []
+    },
+    {
+        "module": "getTestDocument",
+        "members": []
+    },
+    {
+        "module": "getTextContentAccessor",
+        "members": []
+    },
+    {
+        "module": "HTMLDOMPropertyConfig",
+        "members": [
+            "isCustomAttribute",
+            "Properties",
+            "DOMAttributeNames",
+            "DOMPropertyNames"
+        ]
+    },
+    {
+        "module": "instantiateReactComponent",
+        "members": []
+    },
+    {
+        "module": "isEventSupported",
+        "members": []
+    },
+    {
+        "module": "isTextInputElement",
+        "members": []
+    },
+    {
+        "module": "LinkedStateMixin",
+        "members": [
+            "linkState"
+        ]
+    },
+    {
+        "module": "LinkedValueUtils",
+        "members": [
+            "checkPropTypes",
+            "getValue",
+            "getChecked",
+            "executeOnChange"
+        ]
+    },
+    {
+        "module": "MetaMatchers",
+        "members": [
+            "toEqualSpecsIn"
+        ]
+    },
+    {
+        "module": "Object.assign",
+        "members": []
+    },
+    {
+        "module": "onlyChild",
+        "members": []
+    },
+    {
+        "module": "OrderedMap",
+        "members": [
+            "from",
+            "fromArray"
+        ]
+    },
+    {
+        "module": "PooledClass",
+        "members": [
+            "addPoolingTo",
+            "oneArgumentPooler",
+            "twoArgumentPooler",
+            "threeArgumentPooler",
+            "fourArgumentPooler",
+            "fiveArgumentPooler"
+        ]
+    },
+    {
+        "module": "quoteAttributeValueForBrowser",
+        "members": []
+    },
+    {
+        "module": "React",
+        "members": [
+            "Children",
+            "Component",
+            "createElement",
+            "cloneElement",
+            "isValidElement",
+            "PropTypes",
+            "createClass",
+            "createFactory",
+            "createMixin",
+            "DOM",
+            "version",
+            "__spread",
+            "findDOMNode",
+            "render",
+            "unmountComponentAtNode",
+            "renderToString",
+            "renderToStaticMarkup",
+            "__SECRET_DOM_DO_NOT_USE_OR_YOU_WILL_BE_FIRED"
+        ]
+    },
+    {
+        "module": "ReactBrowserComponentMixin",
+        "members": [
+            "getDOMNode"
+        ]
+    },
+    {
+        "module": "ReactBrowserEventEmitter",
+        "members": [
+            "handleTopLevel",
+            "ReactEventListener",
+            "injection",
+            "setEnabled",
+            "isEnabled",
+            "listenTo",
+            "trapBubbledEvent",
+            "trapCapturedEvent",
+            "ensureScrollValueMonitoring"
+        ]
+    },
+    {
+        "module": "ReactChildReconciler",
+        "members": [
+            "instantiateChildren",
+            "updateChildren",
+            "unmountChildren"
+        ]
+    },
+    {
+        "module": "ReactChildren",
+        "members": [
+            "forEach",
+            "map",
+            "mapIntoWithKeyPrefixInternal",
+            "count",
+            "toArray"
+        ]
+    },
+    {
+        "module": "ReactClass",
+        "members": [
+            "createClass",
+            "injection"
+        ]
+    },
+    {
+        "module": "ReactComponent",
+        "members": []
+    },
+    {
+        "module": "ReactComponentBrowserEnvironment",
+        "members": [
+            "processChildrenUpdates",
+            "replaceNodeWithMarkup",
+            "unmountIDFromEnvironment"
+        ]
+    },
+    {
+        "module": "ReactComponentEnvironment",
+        "members": [
+            "unmountIDFromEnvironment",
+            "replaceNodeWithMarkup",
+            "processChildrenUpdates",
+            "injection"
+        ]
+    },
+    {
+        "module": "reactComponentExpect",
+        "members": []
+    },
+    {
+        "module": "ReactComponentWithPureRenderMixin",
+        "members": [
+            "shouldComponentUpdate"
+        ]
+    },
+    {
+        "module": "ReactCompositeComponent",
+        "members": [
+            "Mixin"
+        ]
+    },
+    {
+        "module": "ReactCSSTransitionGroup",
+        "members": [
+            "displayName",
+            "propTypes",
+            "getDefaultProps",
+            "defaultProps"
+        ]
+    },
+    {
+        "module": "ReactCSSTransitionGroupChild",
+        "members": [
+            "displayName",
+            "propTypes"
+        ]
+    },
+    {
+        "module": "ReactCurrentOwner",
+        "members": [
+            "current"
+        ]
+    },
+    {
+        "module": "ReactDefaultBatchingStrategy",
+        "members": [
+            "isBatchingUpdates",
+            "batchedUpdates"
+        ]
+    },
+    {
+        "module": "ReactDefaultInjection",
+        "members": [
+            "inject"
+        ]
+    },
+    {
+        "module": "ReactDefaultPerf",
+        "members": [
+            "_allMeasurements",
+            "_mountStack",
+            "_compositeStack",
+            "_injected",
+            "start",
+            "stop",
+            "getLastMeasurements",
+            "printExclusive",
+            "printInclusive",
+            "getMeasurementsSummaryMap",
+            "printWasted",
+            "printDOM",
+            "_recordWrite",
+            "measure"
+        ]
+    },
+    {
+        "module": "ReactDefaultPerfAnalysis",
+        "members": [
+            "getExclusiveSummary",
+            "getInclusiveSummary",
+            "getDOMSummary",
+            "getTotalTime"
+        ]
+    },
+    {
+        "module": "ReactDOM",
+        "members": [
+            "findDOMNode",
+            "render",
+            "unmountComponentAtNode",
+            "version",
+            "unstable_batchedUpdates",
+            "unstable_renderSubtreeIntoContainer"
+        ]
+    },
+    {
+        "module": "ReactDOMButton",
+        "members": [
+            "getNativeProps"
+        ]
+    },
+    {
+        "module": "ReactDOMComponent",
+        "members": [
+            "displayName",
+            "Mixin"
+        ]
+    },
+    {
+        "module": "ReactDOMComponentFlags",
+        "members": [
+            "nodeHasLegacyProperties",
+            "hasCachedChildNodes"
+        ]
+    },
+    {
+        "module": "ReactDOMComponentTree",
+        "members": [
+            "getClosestInstanceFromNode",
+            "getInstanceFromNode",
+            "getNodeFromInstance",
+            "precacheChildNodes",
+            "precacheNode",
+            "uncacheNode"
+        ]
+    },
+    {
+        "module": "ReactDOMContainerInfo",
+        "members": []
+    },
+    {
+        "module": "ReactDOMFactories",
+        "members": [
+            "a",
+            "abbr",
+            "address",
+            "area",
+            "article",
+            "aside",
+            "audio",
+            "b",
+            "base",
+            "bdi",
+            "bdo",
+            "big",
+            "blockquote",
+            "body",
+            "br",
+            "button",
+            "canvas",
+            "caption",
+            "cite",
+            "code",
+            "col",
+            "colgroup",
+            "data",
+            "datalist",
+            "dd",
+            "del",
+            "details",
+            "dfn",
+            "dialog",
+            "div",
+            "dl",
+            "dt",
+            "em",
+            "embed",
+            "fieldset",
+            "figcaption",
+            "figure",
+            "footer",
+            "form",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "head",
+            "header",
+            "hgroup",
+            "hr",
+            "html",
+            "i",
+            "iframe",
+            "img",
+            "input",
+            "ins",
+            "kbd",
+            "keygen",
+            "label",
+            "legend",
+            "li",
+            "link",
+            "main",
+            "map",
+            "mark",
+            "menu",
+            "menuitem",
+            "meta",
+            "meter",
+            "nav",
+            "noscript",
+            "object",
+            "ol",
+            "optgroup",
+            "option",
+            "output",
+            "p",
+            "param",
+            "picture",
+            "pre",
+            "progress",
+            "q",
+            "rp",
+            "rt",
+            "ruby",
+            "s",
+            "samp",
+            "script",
+            "section",
+            "select",
+            "small",
+            "source",
+            "span",
+            "strong",
+            "style",
+            "sub",
+            "summary",
+            "sup",
+            "table",
+            "tbody",
+            "td",
+            "textarea",
+            "tfoot",
+            "th",
+            "thead",
+            "time",
+            "title",
+            "tr",
+            "track",
+            "u",
+            "ul",
+            "var",
+            "video",
+            "wbr",
+            "circle",
+            "clipPath",
+            "defs",
+            "ellipse",
+            "g",
+            "image",
+            "line",
+            "linearGradient",
+            "mask",
+            "path",
+            "pattern",
+            "polygon",
+            "polyline",
+            "radialGradient",
+            "rect",
+            "stop",
+            "svg",
+            "text",
+            "tspan"
+        ]
+    },
+    {
+        "module": "ReactDOMFeatureFlags",
+        "members": [
+            "useCreateElement"
+        ]
+    },
+    {
+        "module": "ReactDOMIDOperations",
+        "members": [
+            "dangerouslyProcessChildrenUpdates"
+        ]
+    },
+    {
+        "module": "ReactDOMInput",
+        "members": [
+            "getNativeProps",
+            "mountWrapper",
+            "mountReadyWrapper",
+            "unmountWrapper",
+            "updateWrapper"
+        ]
+    },
+    {
+        "module": "ReactDOMOption",
+        "members": [
+            "mountWrapper",
+            "getNativeProps"
+        ]
+    },
+    {
+        "module": "ReactDOMSelect",
+        "members": [
+            "getNativeProps",
+            "mountWrapper",
+            "getSelectValueContext",
+            "postUpdateWrapper"
+        ]
+    },
+    {
+        "module": "ReactDOMSelection",
+        "members": [
+            "getOffsets",
+            "setOffsets"
+        ]
+    },
+    {
+        "module": "ReactDOMServer",
+        "members": [
+            "renderToString",
+            "renderToStaticMarkup",
+            "version"
+        ]
+    },
+    {
+        "module": "ReactDOMTextarea",
+        "members": [
+            "getNativeProps",
+            "mountWrapper",
+            "updateWrapper"
+        ]
+    },
+    {
+        "module": "ReactDOMTextComponent",
+        "members": []
+    },
+    {
+        "module": "ReactDOMTreeTraversal",
+        "members": [
+            "isAncestor",
+            "getLowestCommonAncestor",
+            "getParentInstance",
+            "traverseTwoPhase",
+            "traverseEnterLeave"
+        ]
+    },
+    {
+        "module": "ReactElement",
+        "members": [
+            "createElement",
+            "createFactory",
+            "cloneAndReplaceKey",
+            "cloneAndReplaceProps",
+            "cloneElement",
+            "isValidElement"
+        ]
+    },
+    {
+        "module": "ReactElementValidator",
+        "members": [
+            "createElement",
+            "createFactory",
+            "cloneElement"
+        ]
+    },
+    {
+        "module": "ReactEmptyComponent",
+        "members": [
+            "injection"
+        ]
+    },
+    {
+        "module": "ReactErrorUtils",
+        "members": [
+            "invokeGuardedCallback",
+            "invokeGuardedCallbackWithCatch",
+            "rethrowCaughtError"
+        ]
+    },
+    {
+        "module": "ReactEventEmitterMixin",
+        "members": [
+            "handleTopLevel"
+        ]
+    },
+    {
+        "module": "ReactEventListener",
+        "members": [
+            "_enabled",
+            "_handleTopLevel",
+            "WINDOW_HANDLE",
+            "setHandleTopLevel",
+            "setEnabled",
+            "isEnabled",
+            "trapBubbledEvent",
+            "trapCapturedEvent",
+            "monitorScrollValue",
+            "dispatchEvent"
+        ]
+    },
+    {
+        "module": "ReactFragment",
+        "members": [
+            "create"
+        ]
+    },
+    {
+        "module": "ReactInjection",
+        "members": [
+            "Component",
+            "Class",
+            "DOMProperty",
+            "EmptyComponent",
+            "EventPluginHub",
+            "EventPluginUtils",
+            "EventEmitter",
+            "NativeComponent",
+            "Perf",
+            "Updates"
+        ]
+    },
+    {
+        "module": "ReactInputSelection",
+        "members": [
+            "hasSelectionCapabilities",
+            "getSelectionInformation",
+            "restoreSelection",
+            "getSelection",
+            "setSelection"
+        ]
+    },
+    {
+        "module": "ReactInstanceHandles",
+        "members": [
+            "createReactRootID",
+            "createReactID",
+            "getReactRootIDFromNodeID",
+            "traverseEnterLeave",
+            "traverseTwoPhase",
+            "traverseTwoPhaseSkipTarget",
+            "traverseAncestors",
+            "getFirstCommonAncestorID",
+            "_getNextDescendantID",
+            "isAncestorIDOf",
+            "SEPARATOR"
+        ]
+    },
+    {
+        "module": "ReactInstanceMap",
+        "members": [
+            "remove",
+            "get",
+            "has",
+            "set"
+        ]
+    },
+    {
+        "module": "ReactIsomorphic",
+        "members": [
+            "Children",
+            "Component",
+            "createElement",
+            "cloneElement",
+            "isValidElement",
+            "PropTypes",
+            "createClass",
+            "createFactory",
+            "createMixin",
+            "DOM",
+            "version",
+            "__spread"
+        ]
+    },
+    {
+        "module": "ReactLink",
+        "members": [
+            "PropTypes"
+        ]
+    },
+    {
+        "module": "ReactMarkupChecksum",
+        "members": [
+            "CHECKSUM_ATTR_NAME",
+            "addChecksumToMarkup",
+            "canReuseMarkup"
+        ]
+    },
+    {
+        "module": "ReactMount",
+        "members": [
+            "TopLevelWrapper",
+            "_instancesByReactRootID",
+            "scrollMonitor",
+            "_updateRootComponent",
+            "_renderNewRootComponent",
+            "renderSubtreeIntoContainer",
+            "_renderSubtreeIntoContainer",
+            "render",
+            "unmountComponentAtNode",
+            "_mountImageIntoNode"
+        ]
+    },
+    {
+        "module": "ReactMultiChild",
+        "members": [
+            "Mixin"
+        ]
+    },
+    {
+        "module": "ReactMultiChildUpdateTypes",
+        "members": [
+            "INSERT_MARKUP",
+            "MOVE_EXISTING",
+            "REMOVE_NODE",
+            "SET_MARKUP",
+            "TEXT_CONTENT"
+        ]
+    },
+    {
+        "module": "ReactNativeComponent",
+        "members": [
+            "getComponentClassForElement",
+            "createInternalComponent",
+            "createInstanceForText",
+            "isTextComponent",
+            "injection"
+        ]
+    },
+    {
+        "module": "ReactNodeTypes",
+        "members": [
+            "NATIVE",
+            "COMPOSITE",
+            "EMPTY",
+            "getType"
+        ]
+    },
+    {
+        "module": "ReactNoopUpdateQueue",
+        "members": [
+            "isMounted",
+            "enqueueCallback",
+            "enqueueForceUpdate",
+            "enqueueReplaceState",
+            "enqueueSetState",
+            "enqueueSetProps",
+            "enqueueReplaceProps"
+        ]
+    },
+    {
+        "module": "ReactOwner",
+        "members": [
+            "isValidOwner",
+            "addComponentAsRefTo",
+            "removeComponentAsRefFrom"
+        ]
+    },
+    {
+        "module": "ReactPerf",
+        "members": [
+            "enableMeasure",
+            "storedMeasure",
+            "measureMethods",
+            "measure",
+            "injection"
+        ]
+    },
+    {
+        "module": "ReactPropTransferer",
+        "members": [
+            "mergeProps"
+        ]
+    },
+    {
+        "module": "ReactPropTypeLocationNames",
+        "members": [
+            "prop",
+            "context",
+            "childContext"
+        ]
+    },
+    {
+        "module": "ReactPropTypeLocations",
+        "members": [
+            "prop",
+            "context",
+            "childContext"
+        ]
+    },
+    {
+        "module": "ReactPropTypes",
+        "members": [
+            "array",
+            "bool",
+            "func",
+            "number",
+            "object",
+            "string",
+            "any",
+            "arrayOf",
+            "element",
+            "instanceOf",
+            "node",
+            "objectOf",
+            "oneOf",
+            "oneOfType",
+            "shape"
+        ]
+    },
+    {
+        "module": "ReactReconciler",
+        "members": [
+            "mountComponent",
+            "getNativeNode",
+            "unmountComponent",
+            "receiveComponent",
+            "performUpdateIfNecessary"
+        ]
+    },
+    {
+        "module": "ReactReconcileTransaction",
+        "members": [
+            "instancePool",
+            "getPooled",
+            "poolSize",
+            "release"
+        ]
+    },
+    {
+        "module": "ReactRef",
+        "members": [
+            "attachRefs",
+            "shouldUpdateRefs",
+            "detachRefs"
+        ]
+    },
+    {
+        "module": "ReactServerBatchingStrategy",
+        "members": [
+            "isBatchingUpdates",
+            "batchedUpdates"
+        ]
+    },
+    {
+        "module": "ReactServerRendering",
+        "members": [
+            "renderToString",
+            "renderToStaticMarkup"
+        ]
+    },
+    {
+        "module": "ReactServerRenderingTransaction",
+        "members": [
+            "instancePool",
+            "getPooled",
+            "poolSize",
+            "release"
+        ]
+    },
+    {
+        "module": "ReactStateSetters",
+        "members": [
+            "createStateSetter",
+            "createStateKeySetter",
+            "Mixin"
+        ]
+    },
+    {
+        "module": "ReactTestUtils",
+        "members": [
+            "renderIntoDocument",
+            "isElement",
+            "isElementOfType",
+            "isDOMComponent",
+            "isDOMComponentElement",
+            "isCompositeComponent",
+            "isCompositeComponentWithType",
+            "isCompositeComponentElement",
+            "isCompositeComponentElementWithType",
+            "getRenderedChildOfCompositeComponent",
+            "findAllInRenderedTree",
+            "scryRenderedDOMComponentsWithClass",
+            "findRenderedDOMComponentWithClass",
+            "scryRenderedDOMComponentsWithTag",
+            "findRenderedDOMComponentWithTag",
+            "scryRenderedComponentsWithType",
+            "findRenderedComponentWithType",
+            "mockComponent",
+            "simulateNativeEventOnNode",
+            "simulateNativeEventOnDOMComponent",
+            "nativeTouchData",
+            "createRenderer",
+            "Simulate",
+            "SimulateNative"
+        ]
+    },
+    {
+        "module": "ReactTransitionChildMapping",
+        "members": [
+            "getChildMapping",
+            "mergeChildMappings"
+        ]
+    },
+    {
+        "module": "ReactTransitionEvents",
+        "members": [
+            "addEndEventListener",
+            "removeEndEventListener"
+        ]
+    },
+    {
+        "module": "ReactTransitionGroup",
+        "members": [
+            "displayName",
+            "propTypes",
+            "getDefaultProps",
+            "defaultProps"
+        ]
+    },
+    {
+        "module": "ReactUpdateQueue",
+        "members": [
+            "isMounted",
+            "enqueueCallback",
+            "enqueueCallbackInternal",
+            "enqueueForceUpdate",
+            "enqueueReplaceState",
+            "enqueueSetState",
+            "enqueueSetProps",
+            "enqueueSetPropsInternal",
+            "enqueueReplaceProps",
+            "enqueueReplacePropsInternal",
+            "enqueueElementInternal"
+        ]
+    },
+    {
+        "module": "ReactUpdates",
+        "members": [
+            "ReactReconcileTransaction",
+            "batchedUpdates",
+            "enqueueUpdate",
+            "flushBatchedUpdates",
+            "injection",
+            "asap"
+        ]
+    },
+    {
+        "module": "ReactVersion",
+        "members": []
+    },
+    {
+        "module": "ReactWithAddons",
+        "members": [
+            "Children",
+            "Component",
+            "createElement",
+            "cloneElement",
+            "isValidElement",
+            "PropTypes",
+            "createClass",
+            "createFactory",
+            "createMixin",
+            "DOM",
+            "version",
+            "__spread",
+            "findDOMNode",
+            "render",
+            "unmountComponentAtNode",
+            "renderToString",
+            "renderToStaticMarkup",
+            "__SECRET_DOM_DO_NOT_USE_OR_YOU_WILL_BE_FIRED",
+            "addons"
+        ]
+    },
+    {
+        "module": "renderSubtreeIntoContainer",
+        "members": []
+    },
+    {
+        "module": "ResponderEventPlugin",
+        "members": [
+            "_getResponderID",
+            "eventTypes",
+            "extractEvents",
+            "GlobalResponderHandler",
+            "GlobalInteractionHandler",
+            "injection"
+        ]
+    },
+    {
+        "module": "ResponderSyntheticEvent",
+        "members": [
+            "Interface",
+            "augmentClass",
+            "instancePool",
+            "getPooled",
+            "poolSize",
+            "release"
+        ]
+    },
+    {
+        "module": "ResponderTouchHistoryStore",
+        "members": [
+            "recordTouchTrack",
+            "touchHistory"
+        ]
+    },
+    {
+        "module": "SelectEventPlugin",
+        "members": [
+            "eventTypes",
+            "extractEvents",
+            "didPutListener"
+        ]
+    },
+    {
+        "module": "setInnerHTML",
+        "members": []
+    },
+    {
+        "module": "setTextContent",
+        "members": []
+    },
+    {
+        "module": "shallowCompare",
+        "members": []
+    },
+    {
+        "module": "shouldUpdateReactComponent",
+        "members": []
+    },
+    {
+        "module": "SimpleEventPlugin",
+        "members": [
+            "eventTypes",
+            "extractEvents",
+            "didPutListener",
+            "willDeleteListener"
+        ]
+    },
+    {
+        "module": "sliceChildren",
+        "members": []
+    },
+    {
+        "module": "SVGDOMPropertyConfig",
+        "members": [
+            "Properties",
+            "DOMAttributeNamespaces",
+            "DOMAttributeNames"
+        ]
+    },
+    {
+        "module": "SyntheticClipboardEvent",
+        "members": [
+            "Interface",
+            "augmentClass",
+            "instancePool",
+            "getPooled",
+            "poolSize",
+            "release"
+        ]
+    },
+    {
+        "module": "SyntheticCompositionEvent",
+        "members": [
+            "Interface",
+            "augmentClass",
+            "instancePool",
+            "getPooled",
+            "poolSize",
+            "release"
+        ]
+    },
+    {
+        "module": "SyntheticDragEvent",
+        "members": [
+            "Interface",
+            "augmentClass",
+            "instancePool",
+            "getPooled",
+            "poolSize",
+            "release"
+        ]
+    },
+    {
+        "module": "SyntheticEvent",
+        "members": [
+            "Interface",
+            "augmentClass",
+            "instancePool",
+            "getPooled",
+            "poolSize",
+            "release"
+        ]
+    },
+    {
+        "module": "SyntheticFocusEvent",
+        "members": [
+            "Interface",
+            "augmentClass",
+            "instancePool",
+            "getPooled",
+            "poolSize",
+            "release"
+        ]
+    },
+    {
+        "module": "SyntheticInputEvent",
+        "members": [
+            "Interface",
+            "augmentClass",
+            "instancePool",
+            "getPooled",
+            "poolSize",
+            "release"
+        ]
+    },
+    {
+        "module": "SyntheticKeyboardEvent",
+        "members": [
+            "Interface",
+            "augmentClass",
+            "instancePool",
+            "getPooled",
+            "poolSize",
+            "release"
+        ]
+    },
+    {
+        "module": "SyntheticMouseEvent",
+        "members": [
+            "Interface",
+            "augmentClass",
+            "instancePool",
+            "getPooled",
+            "poolSize",
+            "release"
+        ]
+    },
+    {
+        "module": "SyntheticTouchEvent",
+        "members": [
+            "Interface",
+            "augmentClass",
+            "instancePool",
+            "getPooled",
+            "poolSize",
+            "release"
+        ]
+    },
+    {
+        "module": "SyntheticUIEvent",
+        "members": [
+            "Interface",
+            "augmentClass",
+            "instancePool",
+            "getPooled",
+            "poolSize",
+            "release"
+        ]
+    },
+    {
+        "module": "SyntheticWheelEvent",
+        "members": [
+            "Interface",
+            "augmentClass",
+            "instancePool",
+            "getPooled",
+            "poolSize",
+            "release"
+        ]
+    },
+    {
+        "module": "TapEventPlugin",
+        "members": [
+            "tapMoveThreshold",
+            "eventTypes",
+            "extractEvents"
+        ]
+    },
+    {
+        "module": "Transaction",
+        "members": [
+            "Mixin",
+            "OBSERVED_ERROR"
+        ]
+    },
+    {
+        "module": "traverseAllChildren",
+        "members": []
+    },
+    {
+        "module": "update",
+        "members": []
+    },
+    {
+        "module": "validateDOMNesting",
+        "members": [
+            "updatedAncestorInfo",
+            "isTagValidInContext"
+        ]
+    },
+    {
+        "module": "ViewportMetrics",
+        "members": [
+            "currentScrollLeft",
+            "currentScrollTop",
+            "refreshScrollValues"
+        ]
+    }
+]
