@@ -23,3 +23,6 @@ colony_serve:
 
 colony_output:
 	open http://localhost:3456/colony_report/report
+
+plato_output:
+	open output/react_report/index.html
