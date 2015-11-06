@@ -12,4 +12,4 @@ for file in files.split('\n'):
         continue
     n_occurrences[file] = int(os.popen(require_count % file.split('/')[-1].replace('.js', '')).read().strip())
 
-pprint.pprint(n_occurrences.most_common(100))
+pprint.pprint([[x[0].replace('./', ''), x[1]] for x in n_occurrences.most_common(100)])
