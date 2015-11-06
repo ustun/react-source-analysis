@@ -1,0 +1,141 @@
+<html>
+    <head>
+        <title>JS Complexity Report</title>
+        <link href="http://netdna.bootstrapcdn.com/twitter-bootstrap/2.3.0/css/bootstrap-combined.min.css" rel="stylesheet">
+        <script src="http://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+        <script src="http://cdnjs.cloudflare.com/ajax/libs/graphael/0.5.0/g.raphael-min.js"></script>
+        <script src="http://cdnjs.cloudflare.com/ajax/libs/graphael/0.5.0/g.dot-min.js"></script>
+        <style type="text/css">
+            #container {width: 960px; margin: 0 auto; font-size: 12px; padding: 40px 0;}
+            #path {height: 30px;}
+            
+            .graph-holder {position: relative; margin-bottom: 20px;}
+                .graph-holder div {height: 300px; width: 100%;}
+                .labely {position: absolute; top: 30px; left: -75px; -webkit-transform: rotate(-90deg); -webkit-transform-origin: right bottom; -moz-transform: rotate(-90deg); -moz-transform-origin: right bottom;}
+                .labelx {width: 300px; position: absolute; bottom: -12px; right: 88px; text-align: right;}
+        </style>
+    </head>
+    <body>
+        <div class="navbar navbar-fixed-top">
+            <div class="navbar-inner">
+                <div class="container">
+                    <a class="brand" href="#">JS Complexity (161 files)</a>
+                    <ul class="nav pull-right">
+                        <li>
+                            <form class="navbar-search pull-left" action="">
+                                <input id="path" type="text" class="search-query span8" placeholder="File path" />
+                            </form>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div id="container">
+            <div class="graph-holder">
+                <h5>Line number/Complexity (heat is Difficulty)</h5>
+                <span class="labely">Complexity</span>
+                <span class="labelx">Line number</span>
+                <div id="second-holder"></div>
+            </div>
+            <div class="graph-holder">
+                <h5>Line number/Difficulty (heat is Complexity)</h5>
+                <span class="labely">Difficulty</span>
+                <span class="labelx">Line number</span>
+                <div id="third-holder"></div>
+            </div>
+            <div class="graph-holder">
+                <h5>Difficulty/Complexity (heat is Line number)</h5>
+                <span class="labely">Complexity</span>
+                <span class="labelx">Difficulty</span>
+                <div id="first-holder"></div>
+            </div>
+            <script>
+                    
+                // datas & references  
+                var 
+                    pathHolder  = document.getElementById("path"),
+                    
+                    difficulty  = [73, 49, 73, 69, 39, 48, 45, 42, 60, 89, 45, 52, 49, 57, 50, 48, 42, 34, 39, 44, 32, 47, 40, 57, 31, 41, 41, 60, 35, 29, 64, 35, 28, 54, 29, 36, 37, 37, 19, 38, 39, 18, 49, 24, 39, 36, 24, 26, 36, 23, 17, 29, 32, 26, 20, 31, 39, 18, 32, 31, 34, 26, 16, 33, 9, 15, 14, 14, 25, 28, 12, 16, 14, 10, 23, 24, 15, 10, 14, 18, 19, 15, 14, 20, 20, 21, 18, 11, 15, 16, 15, 14, 11, 16, 12, 13, 16, 9, 9, 7, 16, 26, 7, 12, 10, 7, 10, 8, 10, 9, 6, 8, 9, 6, 6, 4, 11, 10, 9, 5, 13, 10, 5, 12, 6, 4, 5, 6, 5, 5, 5, 5, 7, 6, 2, 1, 9, 4, 10, 4, 4, 10, 9, 6, 6, 9, 5, 3, 4, 3, 6, 5, 7, 5, 7, 6, 6, 3, 8, 10, 5 ],
+                    complexity  = [199, 136, 108, 87, 67, 67, 52, 49, 47, 46, 41, 40, 40, 38, 36, 35, 33, 33, 32, 30, 28, 28, 28, 27, 27, 26, 24, 24, 24, 23, 23, 22, 21, 21, 21, 21, 18, 17, 17, 16, 16, 16, 15, 15, 15, 14, 14, 14, 14, 14, 14, 13, 13, 13, 12, 11, 11, 11, 10, 10, 10, 9, 9, 9, 9, 8, 8, 8, 8, 8, 7, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 ],
+                    lineNum     = [626, 204, 303, 257, 537, 189, 123, 131, 197, 164, 220, 185, 165, 88, 172, 102, 117, 148, 97, 68, 80, 103, 80, 68, 70, 60, 105, 118, 81, 97, 109, 88, 63, 119, 51, 68, 76, 70, 30, 110, 94, 136, 178, 51, 65, 86, 30, 82, 101, 41, 26, 60, 42, 56, 27, 48, 66, 52, 51, 38, 51, 73, 59, 83, 64, 30, 14, 27, 70, 38, 33, 50, 18, 14, 24, 32, 19, 13, 21, 29, 13, 18, 18, 28, 32, 36, 29, 51, 18, 14, 17, 18, 31, 21, 30, 20, 43, 11, 12, 5, 20, 19, 11, 23, 15, 7, 173, 8, 8, 16, 8, 13, 9, 8, 5, 8, 13, 38, 15, 142, 29, 21, 7, 24, 9, 16, 8, 16, 8, 8, 8, 8, 106, 9, 3, 2, 27, 5, 39, 7, 9, 14, 11, 23, 10, 23, 10, 4, 5, 4, 6, 11, 16, 5, 7, 74, 13, 6, 11, 82, 7 ],
+                    
+                    ref         = ["./ReactDOMComponent.js", "./validateDOMNesting.js", "./ReactCompositeComponent.js", "./ReactClass.js", "./SimpleEventPlugin.js", "./ReactMount.js", "./ReactElementValidator.js", "./DOMPropertyOperations.js", "./ReactPropTypes.js", "./OrderedMap.js", "./ReactTestUtils.js", "./ReactDefaultPerf.js", "./BeforeInputEventPlugin.js", "./ReactInstanceHandles.js", "./ResponderEventPlugin.js", "./EventPluginRegistry.js", "./EventPluginUtils.js", "./ChangeEventPlugin.js", "./ReactUpdateQueue.js", "./update.js", "./traverseAllChildren.js", "./ReactDOMSelect.js", "./DOMProperty.js", "./ReactDOMTreeTraversal.js", "./LinkedValueUtils.js", "./Danger.js", "./ReactUpdates.js", "./ReactElement.js", "./ReactDOMInput.js", "./SelectEventPlugin.js", "./ResponderTouchHistoryStore.js", "./CSSPropertyOperations.js", "./ReactDOMTextarea.js", "./ReactDefaultPerfAnalysis.js", "./instantiateReactComponent.js", "./DOMChildrenOperations.js", "./EventPluginHub.js", "./ReactDOMComponentTree.js", "./dangerousStyleValue.js", "./ReactTransitionGroup.js", "./ReactDOMSelection.js", "./ReactBrowserEventEmitter.js", "./ReactMultiChild.js", "./ReactDOM.js", "./MetaMatchers.js", "./SyntheticEvent.js", "./ReactRef.js", "./ReactCSSTransitionGroupChild.js", "./reactComponentExpect.js", "./ReactComponent.js", "./findDOMNode.js", "./ReactInputSelection.js", "./ReactDOMOption.js", "./EnterLeaveEventPlugin.js", "./ReactFragment.js", "./ReactChildReconciler.js", "./PooledClass.js", "./EventPropagators.js", "./Transaction.js", "./ReactTransitionChildMapping.js", "./DOMLazyTree.js", "./TapEventPlugin.js", "./ReactDOMTextComponent.js", "./ReactChildren.js", "./getEventKey.js", "./SyntheticMouseEvent.js", "./shouldUpdateReactComponent.js", "./setInnerHTML.js", "./ReactEventListener.js", "./FallbackCompositionState.js", "./SyntheticKeyboardEvent.js", "./ReactTransitionEvents.js", "./ReactNodeTypes.js", "./ReactDOMContainerInfo.js", "./getNodeForCharacterOffset.js", "./CallbackQueue.js", "./accumulateInto.js", "./SyntheticWheelEvent.js", "./SyntheticUIEvent.js", "./ReactPerf.js", "./ReactOwner.js", "./isEventSupported.js", "./accumulate.js", "./ReactReconciler.js", "./ReactPropTransferer.js", "./ReactNativeComponent.js", "./ReactErrorUtils.js", "./ReactDefaultInjection.js", "./Object.assign.js", "./getEventCharCode.js", "./flattenChildren.js", "./cloneWithProps.js", "./ReactWithAddons.js", "./ReactStateSetters.js", "./ReactServerRendering.js", "./ReactNoopUpdateQueue.js", "./ReactCSSTransitionGroup.js", "./ReactBrowserComponentMixin.js", "./getNativeComponentFromComposite.js", "./getEventTarget.js", "./find_required_modules.js", "./adler32.js", "./setTextContent.js", "./ReactDOMButton.js", "./ReactComponentEnvironment.js", "./onlyChild.js", "./HTMLDOMPropertyConfig.js", "./getTextContentAccessor.js", "./getIteratorFn.js", "./getEventModifierState.js", "./forEachAccumulated.js", "./deprecated.js", "./SyntheticClipboardEvent.js", "./sliceChildren.js", "./shallowCompare.js", "./ReactPropTypeLocationNames.js", "./ReactLink.js", "./ReactIsomorphic.js", "./ReactDOMIDOperations.js", "./ReactDOMFactories.js", "./ReactDefaultBatchingStrategy.js", "./isTextInputElement.js", "./getTestDocument.js", "./createHierarchyRenderer.js", "./canDefineProperty.js", "./webpack.config.js", "./ViewportMetrics.js", "./SyntheticTouchEvent.js", "./SyntheticInputEvent.js", "./SyntheticFocusEvent.js", "./SyntheticDragEvent.js", "./SyntheticCompositionEvent.js", "./SVGDOMPropertyConfig.js", "./ResponderSyntheticEvent.js", "./renderSubtreeIntoContainer.js", "./ReactVersion.js", "./ReactServerRenderingTransaction.js", "./ReactServerBatchingStrategy.js", "./ReactReconcileTransaction.js", "./ReactPropTypeLocations.js", "./ReactMultiChildUpdateTypes.js", "./ReactMarkupChecksum.js", "./ReactInstanceMap.js", "./ReactInjection.js", "./ReactEventEmitterMixin.js", "./ReactEmptyComponent.js", "./ReactDOMServer.js", "./ReactDOMFeatureFlags.js", "./ReactDOMComponentFlags.js", "./ReactCurrentOwner.js", "./ReactComponentWithPureRenderMixin.js", "./ReactComponentBrowserEnvironment.js", "./React.js", "./quoteAttributeValueForBrowser.js", "./LinkedStateMixin.js", "./EventConstants.js", "./escapeTextContentForBrowser.js", "./DOMNamespaces.js", "./DefaultEventPluginOrder.js", "./CSSProperty.js", "./AutoFocusUtils.js" ],
+                    
+                    posx        = 0,
+                    posy        = -10,
+                    width       = 900,
+                    height      = 300,
+                    opt         = {
+                        symbol  : "o",
+                        max     : 10,
+                        heat    : true,
+                        axis    : "0 0 1 1"
+                    }
+                ;
+            
+                // remove value if displayed by browser
+                pathHolder.value = "";
+                
+                // first graph
+                var g1 = new Graph({
+                    holder : "first-holder",
+                    xs : difficulty,
+                    ys : complexity,
+                    heat : lineNum
+                });
+                
+                // second graph
+                var g2 = new Graph({
+                    holder : "second-holder",
+                    xs : lineNum,
+                    ys : complexity,
+                    heat : difficulty
+                });
+                
+                // third graph
+                var g3 = new Graph({
+                    holder : "third-holder",
+                    xs : lineNum,
+                    ys : difficulty,
+                    heat : complexity
+                });
+                
+                
+                
+                
+                // Graph builder
+                function Graph(){
+                    var options = arguments[0];             
+                    var
+                        r = Raphael(options.holder),
+                        index = ref.length - 1,
+                        xs = options.xs,
+                        ys = options.ys,
+                        heat = options.heat
+                    ;
+                    r
+                        .dotchart(posx, posy, width, height, xs, ys, heat, opt)
+                        .hover(function(){
+                            var markerLabel = this.label;
+                            this.marker = 
+                                this.marker || 
+                                r
+                                    .tag(this.x, this.y, markerLabel, 0, this.r + 2)
+                                    .insertBefore(this);
+                            this.marker.show();
+                        }, function(){
+                            this.marker && this.marker.hide();
+                        }).each(function(){
+                            this.index = index--;
+                            this.label = this.value;
+                        }).click(function(){
+                            pathHolder.value = ref[this.index];
+                        })
+                    ;
+                    return r;
+                }
+            
+            </script>
+        </div>
+    </body>
+</html>
