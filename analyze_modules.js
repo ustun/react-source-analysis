@@ -5,8 +5,8 @@ var findRequiredModules = require('./find_required_modules');
 
 
 const fileCriteria = (fileName) => {
-  const excludedFiles = ['webcomponents.js'];
-  if (excludedFiles.indexOf(fileName) > -1) {
+  const excludedFiles = ['webcomponents.js', 'build/main.js', 'hello_react.js'];
+  if (excludedFiles.indexOf(fileName) > -1 || fileName.index) {
   return false;
 } else {
   return true;
@@ -22,14 +22,15 @@ const prettyWriteFile = (fileName, data) => {
 };
 
 // options is optional
-glob("**/*.js", function (er, files) {
+glob("**/*.js", {ignore: ['node_modules/**/*']}, function (er, files) {
+  console.log(files);
   const publicMembers = files.filter(fileCriteria).map(getPublicMembersOfFile);
   prettyPrint(publicMembers);
-  prettyWriteFile('public_members.json', publicMembers);
+  prettyWriteFile('output/public_members.json', publicMembers);
 
   const requiredModules = files.filter(fileCriteria).map(findRequiredModules);
   prettyPrint(requiredModules);
-  prettyWriteFile('required_modules.json', requiredModules);
+  prettyWriteFile('output/required_modules.json', requiredModules);
 
 
 });
